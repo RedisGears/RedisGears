@@ -466,6 +466,20 @@ redis.registerStreamTrigger("consumer", "stream", async function(client, data){
     env.assertEqual(id_to_read_from1, id_to_read_from2)
 
 @gearsTest()
+def testSteamReaderPromiseFromSyncFunction(env):
+    """#!js api_version=1.0 name=lib
+
+redis.registerStreamTrigger("consumer", "stream", function(client, data){
+    return client.callAsync('blpop', 'l', '0');
+})
+    """
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    conn = env.getResp3Connection()
+    env.assertEqual(0, conn.execute_command('TFUNCTION', 'LIST', 'vvv')[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
+    env.expect('lpush', 'l', '1').equal(1)
+    runUntil(env, 1, lambda: conn.execute_command('TFUNCTION', 'LIST', 'vvv')[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
+
+@gearsTest()
 def testCallingRedisCommandOnStreamConsumer(env):
     """#!js api_version=1.0 name=lib
 
@@ -530,3 +544,38 @@ redis.registerStreamTrigger("consumer", "stream",
     env.assertEqual(2, res)
 
     env.cmd('slaveof', 'no', 'one')
+
+@gearsTest()
+def testStreamReaderOnAvoidReplicationTraffic(env):
+    """#!js api_version=1.0 name=lib
+var promise = null;
+
+// we need a key space trigger to register on key miss event
+// and continue the run
+redis.registerKeySpaceTrigger("consumer", "",
+    function(){
+        if (promise == null || promise == 1) {
+            return "no data to processes";
+        }
+        promise("continue");
+        promise = 1;
+        return "OK";
+    }
+);
+
+redis.registerStreamTrigger("consumer", "stream",
+    async function(client) {
+        if (promise == null) {
+            await new Promise((resume, reject) => {
+                promise = resume;
+            });
+        }
+    }
+)
+    """
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    env.expect('CLIENT', 'PAUSE', '2000', 'write').equal('OK')
+    env.cmd('get', 'x')
+    conn = env.getResp3Connection()
+    runUntil(env, 2, lambda: conn.execute_command('TFUNCTION', 'LIST', 'vvv')[0]['stream_triggers'][0]['streams'][0]['total_record_processed'], timeout=5)

@@ -12,10 +12,14 @@
 
 use keys_notifications_ctx::KeySpaceNotificationsCtx;
 use redis_module::redisvalue::RedisValueKey;
-use redis_module::{CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply};
+use redis_module::{
+    BlockingCallOptions, CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply,
+    PromiseCallReply, RedisGILGuard,
+};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
+use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
 use serde::{Deserialize, Serialize};
 
 use config::{
@@ -37,8 +41,8 @@ use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
 use redis_module_macros::{
-    command, config_changed_event_handler, flush_event_handler, loading_event_handler,
-    module_changed_event_handler, role_changed_event_handler,
+    command, config_changed_event_handler, cron_event_handler, flush_event_handler,
+    loading_event_handler, module_changed_event_handler, role_changed_event_handler,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -59,7 +63,7 @@ use libloading::{Library, Symbol};
 use std::collections::HashMap;
 
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use crate::stream_reader::{ConsumerData, StreamReaderCtx};
 use std::iter::Skip;
@@ -113,7 +117,7 @@ fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
     const VERSION: Version = Version {
         major: 7,
         minor: 1,
-        patch: 240,
+        patch: 242,
     };
 
     match ctx.get_redis_version() {
@@ -346,7 +350,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
             );
             if is_master(self.ctx) {
                 // trigger a key scan
-                scan_key_space_for_streams();
+                scan_key_space_for_streams(self.ctx);
             }
             consumer
         };
@@ -488,14 +492,20 @@ impl DbPolicy {
 struct GlobalCtx {
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
     backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
-    plugins: Vec<Library>,
-    pool: Option<Mutex<ThreadPool>>,
-    mgmt_pool: ThreadPool,
+    uninitialised_backends: HashMap<String, Box<dyn BackendCtxInterfaceUninitialised>>,
+    /// Holds the handler to the dyn library of all backends, we need to keep it so the handler will not be freed.
+    _plugins: Vec<Library>,
+    pool: Mutex<Option<ThreadPool>>,
+    /// Thread pool which used to run management tasks that should not be
+    /// starved by user tasks (which run on [`GlobalCtx::pool`]).
+    management_pool: RedisGILGuard<Option<ThreadPool>>,
     stream_ctx: StreamReaderCtx<GearsStreamRecord, GearsStreamConsumer>,
     notifications_ctx: KeysNotificationsCtx,
     avoid_key_space_notifications: bool,
     allow_unsafe_redis_commands: bool,
     db_policy: DbPolicy,
+    future_handlers: HashMap<String, Vec<Weak<RedisGILGuard<FutureHandlerContext>>>>,
+    avoid_replication_traffic: bool,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -527,12 +537,18 @@ fn get_backends_mut() -> &'static mut HashMap<String, Box<dyn BackendCtxInterfac
     &mut get_globals_mut().backends
 }
 
+/// Returns mutable reference to the uninitialised backends dictionary.
+fn get_uninitialised_backends_mut(
+) -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceUninitialised>> {
+    &mut get_globals_mut().uninitialised_backends
+}
+
 fn get_libraries() -> MutexGuard<'static, HashMap<String, Arc<GearsLibrary>>> {
     get_globals().libraries.lock().unwrap()
 }
 
-pub(crate) fn get_thread_pool() -> &'static Mutex<ThreadPool> {
-    get_globals().pool.as_ref().unwrap()
+pub(crate) fn get_thread_pool() -> MutexGuard<'static, Option<ThreadPool>> {
+    get_globals().pool.lock().unwrap()
 }
 
 struct Sentinel;
@@ -554,7 +570,14 @@ impl Drop for Sentinel {
 /// Executes the passed job object in a dedicated thread allocated
 /// from the global module thread pool.
 pub(crate) fn execute_on_pool<F: FnOnce() + Send + 'static>(job: F) {
-    get_thread_pool().lock().unwrap().execute(move || {
+    let mut pool = get_thread_pool();
+    pool.get_or_insert_with(|| {
+        ThreadPool::with_name(
+            "RGExecutor".to_owned(),
+            EXECUTION_THREADS.load(Ordering::Relaxed) as usize,
+        )
+    })
+    .execute(move || {
         job();
     });
 }
@@ -571,6 +594,102 @@ pub(crate) fn call_redis_command(
         .autenticate_user(user)
         .map_err(|e| ErrorReply::Message(e.to_string()))?;
     ctx.call_ext(command, call_options, args)
+}
+
+/// a struct that holds information about not yet resolve future replies.
+/// The struct allows to either abort the execution or invoke the on done callback.
+struct FutureHandlerContext {
+    callback: Option<Box<dyn FnOnce(&Context, CallResult<'static>)>>,
+    disposer: Option<Box<dyn FnOnce(&Context, bool)>>,
+    command: Vec<Vec<u8>>,
+}
+
+impl FutureHandlerContext {
+    /// Call the on done callback that was set to this future object.
+    fn call(
+        &mut self,
+        ctx: &Context,
+        reply: Result<redis_module::CallReply<'static>, ErrorReply<'static>>,
+    ) {
+        self.callback.take().map(|f| f(ctx, reply));
+        self.disposer.take().map(|f| f(ctx, false));
+    }
+
+    /// Abort the command invocation (if possible) and send an error as a reply to the
+    /// on done callback.
+    fn abort(&mut self, ctx: &Context) {
+        self.callback.take().map(|f| {
+            f(
+                ctx,
+                CallResult::Err(ErrorReply::Message("Command was aborted".to_owned())),
+            )
+        });
+        self.disposer.take().map(|f| f(ctx, true));
+    }
+}
+
+/// Calls blocking redis command.
+/// Returns [PromiseReply] which might be already resolved (in case we already got the reply)
+/// or it might be resolved later when the command will be finished.
+/// In case the [PromiseReply] was not yet resolved, the user is expected to give a callback
+/// which will be called when the command will finish.
+pub(crate) fn call_redis_command_async<'ctx>(
+    ctx: &'ctx Context,
+    lib: &str,
+    user: &RedisString,
+    command: &str,
+    call_options: &BlockingCallOptions,
+    args: &[&[u8]],
+) -> PromiseReply<'static, 'ctx> {
+    let _authenticate_scope = ctx
+        .autenticate_user(user)
+        .map_err(|e| ErrorReply::Message(e.to_string()));
+    if let Err(e) = _authenticate_scope {
+        return PromiseReply::Resolved(CallResult::Err(e));
+    }
+
+    match ctx.call_blocking(command, call_options, args) {
+        PromiseCallReply::Resolved(res) => PromiseReply::Resolved(res),
+        PromiseCallReply::Future(future) => {
+            let lib = lib.to_owned();
+            let mut command = vec![command.as_bytes().to_vec()];
+            command.extend(args.iter().map(|v| v.to_vec()));
+            PromiseReply::Future(Box::new(move |callback| {
+                let future_handler_context = FutureHandlerContext {
+                    callback: Some(callback),
+                    disposer: None,
+                    command: command,
+                };
+                let future_handler_context = Arc::new(RedisGILGuard::new(future_handler_context));
+                let future_handler_context_unblocked = Arc::clone(&future_handler_context);
+                let globals = get_globals_mut();
+
+                // add the `future_handler_context` to future_abort_callbacks so we can abort it if needed.
+                globals
+                    .future_handlers
+                    .entry(lib)
+                    .or_insert(Vec::new())
+                    .push(Arc::downgrade(&future_handler_context));
+
+                // Set the unblock handler which will call the plugin callback and free the `future_handler_context`
+                let future_handler = future.set_unblock_handler(move |ctx, reply| {
+                    let mut future_handler_context_unblocked =
+                        future_handler_context_unblocked.lock(ctx);
+                    future_handler_context_unblocked.call(ctx, reply);
+                });
+
+                // Initialize the disposer methon which will abort the command and send an error as a reply to the plugin callback
+                let mut future_handler_context = future_handler_context.lock(ctx);
+                future_handler_context.disposer = Some(Box::new(move |ctx: &Context, abort| {
+                    if abort {
+                        future_handler.abort_and_dispose(ctx);
+                    } else {
+                        future_handler.dispose(ctx);
+                    }
+                }));
+            }))
+        }
+    }
 }
 
 fn verify_v8_mem_usage_values() -> Result<(), RedisError> {
@@ -654,6 +773,92 @@ fn get_db_policy(ctx: &Context) -> DbPolicy {
     DbPolicy::Regular
 }
 
+fn load_v8_backend(
+    ctx: &Context,
+) -> Result<(String, Box<dyn BackendCtxInterfaceUninitialised>, Library), RedisError> {
+    let v8_path = V8_PLUGIN_PATH.lock(ctx);
+
+    let v8_path = std::env::var("modulesdatadir")
+        .map(|val| {
+            format!(
+                "{}/redisgears_2/{}/deps/gears_v8/{}",
+                val,
+                VERSION_NUM.unwrap(),
+                v8_path.as_str()
+            )
+        })
+        .unwrap_or_else(|_| v8_path.to_string());
+
+    let lib = unsafe { Library::new(&v8_path) }
+        .map_err(|e| RedisError::String(format!("Failed loading '{}', {}", v8_path, e)))?;
+    let func: Symbol<unsafe fn(&Context) -> *mut dyn BackendCtxInterfaceUninitialised> =
+        unsafe { lib.get(b"initialize_plugin") }.map_err(|e| {
+            RedisError::String(format!(
+                "Failed getting initialize_plugin symbol, {}",
+                e.to_string()
+            ))
+        })?;
+    let backend = unsafe { Box::from_raw(func(ctx)) };
+    let name = backend.get_name();
+    log::info!("Registered backend: {name}.");
+    Ok((name.to_owned(), backend, lib))
+}
+
+fn initialize_v8_backend(
+    ctx: &Context,
+    uninitialised_backend: Box<dyn BackendCtxInterfaceUninitialised>,
+) -> Result<Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
+    let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
+    let name = uninitialised_backend.get_name();
+    let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> = uninitialised_backend
+        .initialize(BackendCtx {
+            allocator: &RedisAlloc,
+            log_info: Box::new(|msg| log::info!("{msg}")),
+            log_trace: Box::new(|msg| log::trace!("{msg}")),
+            log_debug: Box::new(|msg| log::debug!("{msg}")),
+            log_error: Box::new(|msg| log::error!("{msg}")),
+            log_warning: Box::new(|msg| log::warn!("{msg}")),
+            get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
+                FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
+                FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
+            }),
+            get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
+            get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
+            get_v8_library_initial_memory: Box::new(|| {
+                V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_library_initial_memory_limit: Box::new(|| {
+                V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_library_memory_delta: Box::new(|| {
+                V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_flags: Box::new(move || v8_flags.to_owned()),
+        })
+        .map_err(|e| {
+            RedisError::String(format!("Failed loading {} backend, {}.", name, e.get_msg()))
+        })?;
+    let version = initialised_backend.get_version();
+    log::info!("Initialized backend: {name}, {version}.");
+    Ok(initialised_backend)
+}
+
+pub(crate) fn get_backend(
+    ctx: &Context,
+    name: &str,
+) -> Result<&'static mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
+    get_backends_mut()
+        .get_mut(name)
+        .ok_or_else(|| RedisError::Str("No such backend"))
+        .or_else(|_| {
+            let uninitialised_backend = get_uninitialised_backends_mut()
+                .remove(name)
+                .ok_or_else(|| RedisError::String(format!("Unknown backend {}", name)))?;
+            let backend = initialize_v8_backend(ctx, uninitialised_backend)?;
+            Ok(get_backends_mut().entry(name.to_owned()).or_insert(backend))
+        })
+}
+
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     mr_init(ctx, 1, None);
 
@@ -701,18 +906,28 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             );
         }
     }));
-    let mgmt_pool = ThreadPool::new(1);
-    let mut global_ctx = GlobalCtx {
+    let (v8_backend_name, v8_backend, plugin_lib) = match load_v8_backend(ctx) {
+        Ok(res) => res,
+        Err(e) => {
+            log::error!("{e}");
+            return Status::Err;
+        }
+    };
+    let global_ctx = GlobalCtx {
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
-        plugins: Vec::new(),
-        pool: None,
-        mgmt_pool,
+        uninitialised_backends: HashMap::from([(v8_backend_name, v8_backend)]),
+        _plugins: vec![plugin_lib],
+        pool: Mutex::new(None),
+        management_pool: RedisGILGuard::new(None),
         stream_ctx: StreamReaderCtx::new(
             Box::new(|ctx, key, id, include_id| {
                 // read data from the stream
-                if !is_master(ctx) {
-                    return Err("Can not read data on replica".to_string());
+                if !is_master(ctx) || ctx.avoid_replication_traffic() {
+                    return Err(
+                        "Can not read data on replica or the \"avoid replication traffic\" option is enabled"
+                            .to_string(),
+                    );
                 }
                 let stream_name = ctx.create_string(key);
                 let key = ctx.open_key(&stream_name);
@@ -757,82 +972,11 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         avoid_key_space_notifications: false,
         allow_unsafe_redis_commands: false,
         db_policy: get_db_policy(ctx),
+        future_handlers: HashMap::new(),
+        avoid_replication_traffic: false,
     };
-
-    let v8_path = V8_PLUGIN_PATH.lock(ctx);
-
-    let v8_path = std::env::var("modulesdatadir")
-        .map(|val| {
-            format!(
-                "{}/redisgears_2/{}/deps/gears_v8/{}",
-                val,
-                VERSION_NUM.unwrap(),
-                v8_path.as_str()
-            )
-        })
-        .unwrap_or_else(|_| v8_path.to_string());
-
-    let lib = match unsafe { Library::new(&v8_path) } {
-        Ok(l) => l,
-        Err(e) => {
-            ctx.log_warning(&format!("Failed loading '{}', {}", v8_path, e));
-            return Status::Err;
-        }
-    };
-    {
-        let func: Symbol<unsafe fn(&Context) -> *mut dyn BackendCtxInterfaceUninitialised> =
-            unsafe { lib.get(b"initialize_plugin") }.unwrap();
-        let backend = unsafe { Box::from_raw(func(ctx)) };
-        let name = backend.get_name();
-        if global_ctx.backends.contains_key(name) {
-            ctx.log_warning(&format!("Backend {} already exists", name));
-            return Status::Err;
-        }
-        let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
-        let initialised_backend = match backend.initialize(BackendCtx {
-            allocator: &RedisAlloc,
-            log_info: Box::new(|msg| log::info!("{msg}")),
-            log_trace: Box::new(|msg| log::trace!("{msg}")),
-            log_debug: Box::new(|msg| log::debug!("{msg}")),
-            log_error: Box::new(|msg| log::error!("{msg}")),
-            log_warning: Box::new(|msg| log::warn!("{msg}")),
-            get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
-                FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
-                FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
-            }),
-            get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
-            get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
-            get_v8_library_initial_memory: Box::new(|| {
-                V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
-            }),
-            get_v8_library_initial_memory_limit: Box::new(|| {
-                V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed) as usize
-            }),
-            get_v8_library_memory_delta: Box::new(|| {
-                V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
-            }),
-            get_v8_flags: Box::new(move || v8_flags.to_owned()),
-        }) {
-            Ok(b) => b,
-            Err(e) => {
-                ctx.log_warning(&format!("Failed loading {} backend, {}", name, e.get_msg()));
-                return Status::Err;
-            }
-        };
-        let version = initialised_backend.get_version();
-        ctx.log_notice(&format!("Registered backend: {name}, {version}."));
-        global_ctx
-            .backends
-            .insert(name.to_string(), initialised_backend);
-    }
-    global_ctx.plugins.push(lib);
 
     unsafe { GLOBALS = Some(global_ctx) };
-
-    let globals = get_globals_mut();
-    globals.pool = Some(Mutex::new(ThreadPool::new(
-        (*EXECUTION_THREADS.lock(ctx)) as usize,
-    )));
 
     Status::Ok
 }
@@ -861,8 +1005,10 @@ pub(crate) fn is_master(ctx: &Context) -> bool {
 /// Returns `true` if the function with the specified flags is allowed
 /// to run on replicas in case the current instance is a replica.
 pub(crate) fn verify_ok_on_replica(ctx: &Context, flags: FunctionFlags) -> bool {
-    // master which is not readonly, ok to run || we can run function with no writes on replica.
-    (ctx.get_flags().contains(ContextFlags::MASTER) && !get_globals().db_policy.is_readonly())
+    // master which is not readonly and avoid replication traffic was not requested, ok to run || we can run function with no writes anyhow.
+    (ctx.get_flags().contains(ContextFlags::MASTER)
+        && !get_globals().db_policy.is_readonly()
+        && !ctx.avoid_replication_traffic())
         || flags.contains(FunctionFlags::NO_WRITES)
 }
 
@@ -895,7 +1041,7 @@ fn function_call_command(
 
     if !verify_ok_on_replica(ctx, function.flags) {
         return Err(RedisError::Str(
-            "Err can not run a function that might perform writes on a replica",
+            "Err can not run a function that might perform writes on a replica or when the \"avoid replication traffic\" option is enabled",
         ));
     }
 
@@ -959,6 +1105,37 @@ fn function_debug_command(
             get_globals_mut().allow_unsafe_redis_commands = true;
             return Ok(RedisValue::SimpleStringStatic("OK"));
         }
+        "dump_pending_async_calls" => {
+            return Ok(RedisValue::OrderedMap(
+                get_globals()
+                    .future_handlers
+                    .iter()
+                    .map(|(lib, v)| {
+                        (
+                            RedisValueKey::String(lib.to_owned()),
+                            RedisValue::Array(
+                                v.iter()
+                                    .map(|v| {
+                                        v.upgrade().map_or(RedisValue::Null, |v| {
+                                            let v = v.lock(ctx);
+                                            let res: Vec<String> = v
+                                                .command
+                                                .iter()
+                                                .map(|v| {
+                                                    String::from_utf8_lossy(v.as_slice())
+                                                        .into_owned()
+                                                })
+                                                .collect();
+                                            RedisValue::BulkString(res.join(" "))
+                                        })
+                                    })
+                                    .collect(),
+                            ),
+                        )
+                    })
+                    .collect(),
+            ))
+        }
         "help" => {
             return Ok(RedisValue::Array(
                 vec![
@@ -971,9 +1148,9 @@ fn function_debug_command(
         }
         _ => (),
     }
-    let backend = get_backends_mut().get_mut(backend_name).map_or(
+    let backend = get_backend(ctx, backend_name).map_or(
         Err(RedisError::String(format!(
-            "Backend '{}' does not exists",
+            "Backend '{}' does not exists or not yet loaded",
             backend_name
         ))),
         Ok,
@@ -1025,38 +1202,51 @@ fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, 
     globals.notifications_ctx.on_key_touched(ctx, event, key)
 }
 
-fn scan_key_space_for_streams() {
-    get_globals().mgmt_pool.execute(|| {
-        let cursor = KeysCursor::new();
-        let thread_ctx = ThreadSafeContext::default();
-        loop {
-            let guard = thread_ctx.lock();
-            let ctx = &guard;
-            let scanned = cursor.scan(ctx, &|ctx, key_name, key| {
-                let key_type = match key {
-                    Some(k) => k.key_type(),
-                    None => ctx.open_key(&key_name).key_type(),
-                };
-                if key_type == Stream {
-                    get_globals_mut().stream_ctx.on_stream_touched(
-                        ctx,
-                        "created",
-                        key_name.as_slice(),
-                    );
+fn scan_key_space_for_streams(ctx: &Context) {
+    let mut mgmt_pool = get_globals().management_pool.lock(ctx);
+    mgmt_pool
+        .get_or_insert_with(|| ThreadPool::with_name("RGMgmtExecutor".to_owned(), 1))
+        .execute(|| {
+            let cursor = KeysCursor::new();
+            let thread_ctx = ThreadSafeContext::default();
+            loop {
+                let guard = thread_ctx.lock();
+                let ctx = &guard;
+                let scanned = cursor.scan(ctx, &|ctx, key_name, key| {
+                    let key_type = match key {
+                        Some(k) => k.key_type(),
+                        None => ctx.open_key(&key_name).key_type(),
+                    };
+                    if key_type == Stream {
+                        get_globals_mut().stream_ctx.on_stream_touched(
+                            ctx,
+                            "created",
+                            key_name.as_slice(),
+                        );
+                    }
+                });
+                if !scanned {
+                    break;
                 }
-            });
-            if !scanned {
-                break;
             }
-        }
-    })
+        })
 }
 
 #[role_changed_event_handler]
-fn on_role_changed(ctx: &Context, role_changed: ServerRole) {
-    if let ServerRole::Primary = role_changed {
+fn on_role_changed(ctx: &Context, _role_changed: ServerRole) {
+    // we should use `is_master` here and not `_role_changed` because `is_master` will also
+    // return false in case its a read only master (replicaof PseudoSlaveReadonly)
+    if is_master(ctx) {
         ctx.log_notice("Role changed to primary, initializing key scan to search for streams.");
-        scan_key_space_for_streams();
+        scan_key_space_for_streams(ctx);
+    } else {
+        log::info!("Role changed to replica, abort all async commands invocation.");
+        let globals = get_globals_mut();
+        globals.future_handlers.drain().for_each(|(_, v)| {
+            v.iter()
+                .filter_map(|v| v.upgrade())
+                .for_each(|v| v.lock(ctx).abort(ctx))
+        })
     }
 }
 
@@ -1117,6 +1307,39 @@ fn on_config_change(ctx: &Context, values: &[&str]) {
         let globals = get_globals_mut();
         globals.db_policy = get_db_policy(ctx);
     }
+}
+
+/// Will be called by Redis to execute some repeated tasks.
+/// Currently we will clean future handlers that has been finised.
+#[cron_event_handler]
+fn cron_event_handler(ctx: &Context, _hz: u64) {
+    let globals = get_globals_mut();
+    globals.future_handlers = globals
+        .future_handlers
+        .drain()
+        .filter_map(|(k, mut v)| {
+            let res: Vec<_> = v
+                .drain(0..)
+                .filter_map(|v| {
+                    let _ = v.upgrade()?;
+                    return Some(v);
+                })
+                .collect();
+            if res.is_empty() {
+                return None;
+            }
+            Some((k, res))
+        })
+        .collect();
+
+    if globals.avoid_replication_traffic && !ctx.avoid_replication_traffic() {
+        // avoid replication traffic was turned off, lets reinitiate stream processing.
+        if is_master(ctx) {
+            ctx.log_notice("Avoid replication traffic was disabled, initializing key scan to search for streams.");
+            scan_key_space_for_streams(ctx);
+        }
+    }
+    globals.avoid_replication_traffic = ctx.avoid_replication_traffic();
 }
 
 pub(crate) fn verify_name(name: &str) -> Result<(), String> {

@@ -322,6 +322,33 @@ redis.registerAsyncFunction("test1", async function(client){
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.expectTfcallAsync('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
 
+@gearsTest(enableGearsDebugCommands=True, gearsConfig={"v8-flags": "'--expose_gc'"})
+def testAsyncScriptTimeout2(env):
+    script = """#!js api_version=1.0 name=lib
+redis.registerAsyncFunction("test1", async function(client){
+    await client.block(function(c){
+        return c.callAsync('blpop', 'l', '0');
+    });
+    client.block(function(){
+        while (true);
+    });
+});
+    """
+    env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
+    env.expect('tfunction', 'debug', 'js', 'avoid_global_allow_list').equal('OK')
+    env.expect('tfunction', 'LOAD', script).equal('OK')
+    future = env.noBlockingTfcallAsync('lib', 'test1')
+    def run_v8_gc():
+        env.cmd('tfunction', 'debug', 'js', 'request_v8_gc_for_debugging')
+        res = env.cmd('info', 'clients')['blocked_clients']
+        return res
+    runUntil(env, 1, run_v8_gc)
+    env.expect('RPUSH', 'l', '1').equal(1)
+    runUntil(env, 0, run_v8_gc)
+    future.expectError('Promise was dropped without been resolved')
+    
+    
+
 @gearsTest()
 def testExecuteAsyncScriptTimeout(env):
     """#!js api_version=1.0 name=lib
@@ -584,10 +611,7 @@ redis.registerFunction("debug_protocol", function(client, arg){
 });
     """
     env.expect('TFUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
-    port = int(env.cmd('config', 'get', 'port')[1])
-
-    # test resp3
-    conn = Redis('localhost', port, protocol=3, decode_responses=True)
+    conn = env.getResp3Connection()
     
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['string'], c=conn), 'Hello World')
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['integer'], c=conn), 12345)
@@ -623,10 +647,7 @@ redis.registerFunction("test", function(){
     return "test";
 });
     """
-    port = int(env.cmd('config', 'get', 'port')[1])
-
-    # test resp3
-    conn = Redis('localhost', port, protocol=3, decode_responses=True)
+    conn = env.getResp3Connection()
     
     env.assertEqual(conn.execute_command('TFUNCTION', 'LIST'), [\
         {\
@@ -639,7 +660,8 @@ redis.registerFunction("test", function(){
          'user': 'default',\
          'keyspace_triggers': [],\
          'api_version': '1.0',\
-         'stream_triggers': []\
+         'stream_triggers': [],\
+         'pending_async_calls': []\
         }\
     ])
 
@@ -954,3 +976,22 @@ redis.registerFunction("n_notifications", ()=>{return n_notifications;}, {flags:
     env.expect('replicaof', 'localhost', '1111').equal('OK')
     env.cmd('get', 'x') # should trigger key miss notification but we should not count it because we are a replica
     env.expectTfcall('lib', 'n_notifications').equal(1)
+
+@gearsTest()
+def testAvoidReplicationTrafficOnAsyncFunction(env):
+    """#!js api_version=1.0 name=lib
+var n_notifications = 0;
+redis.registerAsyncFunction("test",
+    async (client) => {
+        while (true) {
+            client.block((c)=>{
+                c.call('incr', 'x');
+            });
+        }
+    }
+);
+    """
+    future = env.noBlockingTfcallAsync('lib', 'test')
+    runUntil(env, True, lambda: int(env.cmd('get', 'x')) > 2)
+    env.expect('CLIENT', 'PAUSE', '1000', 'all').equal('OK')
+    future.expectError('Can not lock redis for write')

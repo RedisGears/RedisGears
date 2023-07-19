@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use bitflags::bitflags;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
 use redisgears_macros_internals::get_allow_deny_lists;
@@ -14,6 +15,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::CompiledLibraryInterface, backend_ctx::LibraryFatalFailurePolicy,
     load_library_ctx::LibraryCtxInterface, GearsApiError,
 };
+use v8_rs::v8::isolate_scope::GarbageCollectionJobType;
 use v8_rs::v8::v8_version;
 
 use crate::v8_native_functions::{initialize_globals_for_version, ApiVersionSupported};
@@ -112,10 +114,19 @@ fn deny_list() -> &'static HashSet<String> {
 
 type ScriptCtxVec = Arc<Mutex<Vec<Weak<V8ScriptCtx>>>>;
 
+bitflags! {
+    #[derive(Clone, Copy, Debug)]
+    pub struct GlobalOptions : u32 {
+        /// If enable, avoid filtering globals by the globals allow list.
+        const AVOID_GLOBALS_ALLOW_LIST = 0b00000001;
+    }
+}
+
 struct Globals {
     backend_ctx: Option<BackendCtx>,
     bypassed_memory_limit: Option<AtomicBool>,
     script_ctx_vec: Option<ScriptCtxVec>,
+    global_options: GlobalOptions,
 }
 
 unsafe impl GlobalAlloc for Globals {
@@ -139,6 +150,7 @@ static mut GLOBAL: Globals = Globals {
     backend_ctx: None,
     bypassed_memory_limit: None,
     script_ctx_vec: None,
+    global_options: GlobalOptions::empty(),
 };
 
 /// Log a generic info message which are not related to
@@ -242,6 +254,16 @@ pub(crate) fn initial_memory_limit() -> usize {
     0usize
 }
 
+/// Set the given globals option.
+pub(crate) fn set_global_option(global_option: GlobalOptions) {
+    unsafe { &mut GLOBAL }.global_options |= global_option;
+}
+
+/// Get the given globals option.
+pub(crate) fn get_global_option() -> GlobalOptions {
+    unsafe { &GLOBAL }.global_options
+}
+
 /// Return the delta by which we should increase
 /// an isolate memory limit, as long as the max
 /// memory did not yet reached.
@@ -307,7 +329,7 @@ fn scan_for_isolates_timeout(script_ctx_vec: &ScriptCtxVec) {
                 if script_ctx.is_gil_locked() && !script_ctx.is_lock_timedout() {
                     // gil is current locked. we should check for timeout.
                     // todo: call Redis back to reply to pings and some other commands.
-                    let gil_lock_duration = script_ctx.git_lock_duration_ms();
+                    let gil_lock_duration = script_ctx.gil_lock_duration_ms();
                     let gil_lock_configured_timeout = gil_lock_timeout();
                     if gil_lock_duration > gil_lock_configured_timeout {
                         script_ctx.set_lock_timedout();
@@ -364,7 +386,7 @@ impl V8Backend {
         }
     }
 
-    fn initialize_v8_engine(&self, flags: &str) {
+    fn initialize_v8_engine(&self, flags: &str) -> Result<(), GearsApiError> {
         v8_init_with_error_handlers(
             Box::new(|line, msg| {
                 let msg = format!("v8 fatal error on {}, {}", line, msg);
@@ -387,20 +409,24 @@ impl V8Backend {
             1,
             Some(flags),
         )
-        .expect("Failed loading V8");
+        .map_err(GearsApiError::new)
     }
 
-    fn spone_background_maintenance_thread(&self) {
+    fn spawn_background_maintenance_thread(&self) -> Result<(), GearsApiError> {
         let script_ctxs = Arc::clone(&self.script_ctx_vec);
-        std::thread::spawn(move || {
-            let mut detected_memory_pressure = false;
-            loop {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                scan_for_isolates_timeout(&script_ctxs);
-                detected_memory_pressure =
-                    check_isolates_memory_limit(&script_ctxs, detected_memory_pressure);
-            }
-        });
+        std::thread::Builder::new()
+            .name("v8maintenance".to_string())
+            .spawn(move || {
+                let mut detected_memory_pressure = false;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    scan_for_isolates_timeout(&script_ctxs);
+                    detected_memory_pressure =
+                        check_isolates_memory_limit(&script_ctxs, detected_memory_pressure);
+                }
+            })
+            .map_err(|e| GearsApiError::new(e.to_string()))?;
+        Ok(())
     }
 }
 
@@ -424,8 +450,25 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
             GLOBAL.bypassed_memory_limit = Some(AtomicBool::new(false));
             GLOBAL.script_ctx_vec = Some(Arc::clone(&self.script_ctx_vec));
         }
-        self.initialize_v8_engine(&flags);
-        self.spone_background_maintenance_thread();
+
+        std::panic::set_hook(Box::new(|panic_info| {
+            log_error(&format!("Application panicked, {}", panic_info));
+            let (file, line) = match panic_info.location() {
+                Some(l) => (l.file(), l.line()),
+                None => ("", 0),
+            };
+            let file = std::ffi::CString::new(file).unwrap();
+            unsafe {
+                redis_module::raw::RedisModule__Assert.unwrap()(
+                    "Crashed on panic\0".as_ptr() as *const std::os::raw::c_char,
+                    file.as_ptr(),
+                    line as i32,
+                );
+            }
+        }));
+
+        self.initialize_v8_engine(&flags)?;
+        self.spawn_background_maintenance_thread()?;
 
         Ok(self)
     }
@@ -464,23 +507,25 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let ctx_scope = ctx.enter(&isolate_scope);
 
                 let globals = ctx_scope.get_globals();
-                let propeties = globals.get_own_property_names(&ctx_scope);
-                propeties.iter(&ctx_scope).try_for_each(|v| {
-                    let s = v.to_utf8().ok_or(GearsApiError::new("Failed converting global property name to string"))?;
-                    if !allow_list().contains(s.as_str()) {
-                        if !deny_list().contains(s.as_str()) {
-                            compiled_library_api.log_warning(&format!(
-                                "Found global '{}' which is not on the allowed list nor on the deny list.",
-                                s.as_str()
-                            ));
+                if !(get_global_option().contains(GlobalOptions::AVOID_GLOBALS_ALLOW_LIST)) {
+                    let propeties = globals.get_own_property_names(&ctx_scope);
+                    propeties.iter(&ctx_scope).try_for_each(|v| {
+                        let s = v.to_utf8().ok_or(GearsApiError::new("Failed converting global property name to string"))?;
+                        if !allow_list().contains(s.as_str()) {
+                            if !deny_list().contains(s.as_str()) {
+                                compiled_library_api.log_warning(&format!(
+                                    "Found global '{}' which is not on the allowed list nor on the deny list.",
+                                    s.as_str()
+                                ));
+                            }
+                            // property does not exists on the allow list. lets drop it.
+                            if !globals.delete(&ctx_scope, &v) {
+                                return Err(GearsApiError::new(format!("Failed deleting global '{}' which is not on the allowed list, can not load the library.", s.as_str())));
+                            }
                         }
-                        // property does not exists on the allow list. lets drop it.
-                        if !globals.delete(&ctx_scope, &v) {
-                            return Err(GearsApiError::new(format!("Failed deleting global '{}' which is not on the allowed list, can not load the library.", s.as_str())));
-                        }
-                    }
-                    Ok(())
-                })?;
+                        Ok(())
+                    })?;
+                }
 
                 let v8code_str = isolate_scope.new_string(code);
 
@@ -638,6 +683,18 @@ impl BackendCtxInterfaceInitialised for V8Backend {
             }
             "isolates_gc" => {
                 self.isolates_gc();
+                Ok(RedisValue::SimpleString("OK".to_string()))
+            }
+            "request_v8_gc_for_debugging" => {
+                let l = self.script_ctx_vec.lock().unwrap();
+                l.iter().filter_map(|v| v.upgrade()).for_each(|v| {
+                    let isolate_scope = v.isolate.enter();
+                    isolate_scope.request_gc_for_testing(GarbageCollectionJobType::Full);
+                });
+                Ok(RedisValue::SimpleString("OK".to_string()))
+            }
+            "avoid_global_allow_list" => {
+                set_global_option(GlobalOptions::AVOID_GLOBALS_ALLOW_LIST);
                 Ok(RedisValue::SimpleString("OK".to_string()))
             }
             "isolates_stats" => {

@@ -5,7 +5,7 @@
  */
 
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
-use v8_rs::v8::{v8_promise::V8PromiseState, v8_value::V8LocalValue, v8_value::V8PersistValue};
+use v8_rs::v8::{v8_value::V8LocalValue, v8_value::V8PersistValue};
 
 use redisgears_plugin_api::redisgears_plugin_api::stream_ctx::{
     StreamCtxInterface, StreamProcessCtxInterface, StreamRecordAck, StreamRecordInterface,
@@ -15,20 +15,14 @@ use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::BackgroundRu
 
 use crate::v8_backend::bypass_memory_limit;
 use crate::v8_native_functions::{get_backgrounnd_client, get_redis_client, RedisClient};
-use crate::v8_script_ctx::V8ScriptCtx;
+use crate::v8_script_ctx::{GilStatus, V8ScriptCtx};
 
 use std::cell::RefCell;
 use std::sync::Arc;
 
 use std::str;
 
-use v8_derive::new_native_function;
-
-use crate::{get_error_from_object, get_exception_msg};
-
-struct V8StreamAckCtx {
-    ack: Option<Box<dyn FnOnce(StreamRecordAck) + Send>>,
-}
+use crate::get_exception_msg;
 
 struct V8StreamCtxInternals {
     persisted_function: V8PersistValue,
@@ -63,6 +57,7 @@ impl V8StreamCtxInternals {
         stream_name: &[u8],
         record: Box<dyn StreamRecordInterface>,
         run_ctx: &dyn StreamProcessCtxInterface,
+        ack_callback: Box<dyn FnOnce(StreamRecordAck) + Send>,
     ) -> Option<StreamRecordAck> {
         let isolate_scope = self.script_ctx.isolate.enter();
         let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
@@ -144,21 +139,50 @@ impl V8StreamCtxInternals {
 
         let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
 
-        self.script_ctx.before_run();
-        self.script_ctx.after_lock_gil();
-        let res = self.persisted_function.as_local(&isolate_scope).call(
+        let res = self.script_ctx.call(
+            &self.persisted_function.as_local(&isolate_scope),
             &ctx_scope,
             Some(&[&r_client.to_value(), &stream_data.to_value()]),
+            GilStatus::Locked,
         );
-        self.script_ctx.before_release_gil();
-        self.script_ctx.after_run();
 
         redis_client.borrow_mut().make_invalid();
 
         Some(match res {
-            Some(_) => StreamRecordAck::Ack,
+            Some(res) => {
+                if res.is_promise() {
+                    let promise = res.as_promise();
+                    return self
+                        .script_ctx
+                        .promise_rejected_or_fulfilled(
+                            &isolate_scope,
+                            &ctx_scope,
+                            &promise,
+                            move |res| {
+                                Some(res.map_or_else(
+                                    |e| StreamRecordAck::Nack(e),
+                                    |_| StreamRecordAck::Ack,
+                                ))
+                            },
+                        )
+                        .unwrap_or_else(|| {
+                            self.script_ctx.promise_rejected_or_fulfilled_async(
+                                &ctx_scope,
+                                &promise,
+                                move |res| {
+                                    ack_callback(res.map_or_else(
+                                        |e| StreamRecordAck::Nack(e),
+                                        |_| StreamRecordAck::Ack,
+                                    ));
+                                },
+                            );
+                            None
+                        });
+                } else {
+                    StreamRecordAck::Ack
+                }
+            }
             None => {
-                // todo: handle promise
                 let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope);
                 StreamRecordAck::Nack(error_msg)
             }
@@ -172,9 +196,6 @@ impl V8StreamCtxInternals {
         redis_client: Box<dyn BackgroundRunFunctionCtxInterface>,
         ack_callback: Box<dyn FnOnce(StreamRecordAck) + Send>,
     ) {
-        let ack_callback = Arc::new(RefCell::new(V8StreamAckCtx {
-            ack: Some(ack_callback),
-        }));
         let res = {
             let isolate_scope = self.script_ctx.isolate.enter();
             let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
@@ -256,54 +277,35 @@ impl V8StreamCtxInternals {
                 Arc::new(redis_client),
             );
 
-            self.script_ctx.before_run();
-            let res = self.persisted_function.as_local(&isolate_scope).call(
+            let res = self.script_ctx.call(
+                &self.persisted_function.as_local(&isolate_scope),
                 &ctx_scope,
                 Some(&[&r_client.to_value(), &stream_data.to_value()]),
+                GilStatus::Unlocked,
             );
-            self.script_ctx.after_run();
 
             match res {
                 Some(res) => {
                     if res.is_promise() {
-                        let res = res.as_promise();
-                        if res.state() == V8PromiseState::Rejected {
-                            let res = res.get_result();
-                            let error = get_error_from_object(&res, &ctx_scope);
-                            Some(StreamRecordAck::Nack(error))
-                        } else if res.state() == V8PromiseState::Fulfilled {
-                            Some(StreamRecordAck::Ack)
-                        } else {
-                            let ack_callback_resolve = Arc::clone(&ack_callback);
-                            let ack_callback_reject = Arc::clone(&ack_callback);
-                            let resolve =
-                                ctx_scope.new_native_function(move |_args, isolate, _context| {
-                                    let _unlocker = isolate.new_unlocker();
-                                    if let Some(ack) = ack_callback_resolve.borrow_mut().ack.take()
-                                    {
-                                        ack(StreamRecordAck::Ack);
-                                    }
-                                    None
-                                });
-                            let reject = ctx_scope.new_native_function(new_native_function!(
-                                move |isolate, ctx_scope, res: V8LocalValue| {
-                                    let error = get_error_from_object(&res, ctx_scope);
-                                    let _unlocker = isolate.new_unlocker();
-                                    if let Some(ack) = ack_callback_reject.borrow_mut().ack.take() {
-                                        ack(StreamRecordAck::Nack(error));
-                                    }
-                                    Ok::<_, String>(None)
-                                }
-                            ));
-                            res.then(&ctx_scope, &resolve, &reject);
-                            None
-                        }
+                        self.script_ctx.handle_promise(
+                            &isolate_scope,
+                            &ctx_scope,
+                            &res.as_promise(),
+                            move |res| {
+                                let _unlocker =
+                                    res.as_ref().map(|v| v.isolate_scope.new_unlocker());
+                                ack_callback(res.map_or_else(
+                                    |e| StreamRecordAck::Nack(e),
+                                    |_| StreamRecordAck::Ack,
+                                ));
+                            },
+                        );
+                        return;
                     } else {
                         Some(StreamRecordAck::Ack)
                     }
                 }
                 None => {
-                    // todo: hanlde promise
                     let error_msg =
                         get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope);
                     Some(StreamRecordAck::Nack(error_msg))
@@ -312,9 +314,7 @@ impl V8StreamCtxInternals {
         };
 
         if let Some(r) = res {
-            if let Some(ack) = ack_callback.borrow_mut().ack.take() {
-                ack(r);
-            }
+            ack_callback(r);
         }
     }
 }
@@ -350,7 +350,7 @@ impl StreamCtxInterface for V8StreamCtx {
             None
         } else {
             self.internals
-                .process_record_internal_sync(stream_name, record, run_ctx)
+                .process_record_internal_sync(stream_name, record, run_ctx, ack_callback)
         }
     }
 }

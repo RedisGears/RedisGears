@@ -16,7 +16,7 @@ use crate::{
     get_libraries, verify_ok_on_replica, verify_oom, Deserialize, GearsLibraryMetaData, Serialize,
 };
 
-use redis_module::{RedisString, RedisValue, ThreadSafeContext};
+use redis_module::{RedisString, RedisValue};
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -156,20 +156,20 @@ impl RemoteTask for GearsRemoteTask {
 
 impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
     fn lock(&self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError> {
-        let ctx_guard = ThreadSafeContext::new().lock();
-        if !verify_ok_on_replica(&ctx_guard, self.call_options.flags) {
+        let detached_ctx_guard = redis_module::MODULE_CONTEXT.lock();
+        if !verify_ok_on_replica(&detached_ctx_guard, self.call_options.flags) {
             return Err(GearsApiError::new(
-                "Can not lock redis for write on replica".to_string(),
+                "Can not lock redis for write on replica or when the \"avoid replication traffic\" option is enabled".to_string(),
             ));
         }
-        if !verify_oom(&ctx_guard, self.call_options.flags) {
+        if !verify_oom(&detached_ctx_guard, self.call_options.flags) {
             return Err(GearsApiError::new(
                 "OOM Can not lock redis for write".to_string(),
             ));
         }
-        let user = self.user.safe_clone(&ctx_guard);
+        let user = self.user.safe_clone(&detached_ctx_guard);
         Ok(Box::new(BackgroundRunScopeGuardCtx::new(
-            ctx_guard,
+            detached_ctx_guard,
             user,
             &self.lib_meta_data,
             self.call_options.clone(),

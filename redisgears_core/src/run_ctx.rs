@@ -6,17 +6,24 @@
 
 use redis_module::{
     CallResult, Context, ContextFlags, RedisError, RedisResult, RedisString, ThreadSafeContext,
-    {CallOptionResp, CallOptions, CallOptionsBuilder},
+    {BlockingCallOptions, CallOptionResp, CallOptions, CallOptionsBuilder},
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    load_library_ctx::FunctionFlags, redisai_interface::AIModelInterface,
-    redisai_interface::AIScriptInterface, run_function_ctx::BackgroundRunFunctionCtxInterface,
-    run_function_ctx::RedisClientCtxInterface, run_function_ctx::ReplyCtxInterface,
-    run_function_ctx::RunFunctionCtxInterface, GearsApiError,
+    load_library_ctx::FunctionFlags,
+    redisai_interface::AIModelInterface,
+    redisai_interface::AIScriptInterface,
+    run_function_ctx::RedisClientCtxInterface,
+    run_function_ctx::ReplyCtxInterface,
+    run_function_ctx::RunFunctionCtxInterface,
+    run_function_ctx::{BackgroundRunFunctionCtxInterface, PromiseReply},
+    GearsApiError,
 };
 
-use crate::{call_redis_command, get_globals, get_msg_verbose, GearsLibraryMetaData};
+use crate::{
+    call_redis_command, call_redis_command_async, get_globals, get_msg_verbose,
+    GearsLibraryMetaData,
+};
 
 use crate::background_run_ctx::BackgroundRunCtx;
 
@@ -28,11 +35,12 @@ use redisai_rs::redisai::redisai_script::RedisAIScript;
 #[derive(Clone)]
 pub(crate) struct RedisClientCallOptions {
     pub(crate) call_options: CallOptions,
+    pub(crate) blocking_call_options: BlockingCallOptions,
     pub(crate) flags: FunctionFlags,
 }
 
 impl RedisClientCallOptions {
-    pub(crate) fn new(flags: FunctionFlags) -> RedisClientCallOptions {
+    fn get_builder(flags: FunctionFlags) -> CallOptionsBuilder {
         let call_options = CallOptionsBuilder::new()
             .replicate()
             .verify_acl()
@@ -43,14 +51,16 @@ impl RedisClientCallOptions {
         } else {
             call_options
         };
-        let call_options = if flags.contains(FunctionFlags::NO_WRITES) {
+        if flags.contains(FunctionFlags::NO_WRITES) {
             call_options.no_writes()
         } else {
             call_options
-        };
-
+        }
+    }
+    pub(crate) fn new(flags: FunctionFlags) -> RedisClientCallOptions {
         RedisClientCallOptions {
-            call_options: call_options.build(),
+            call_options: Self::get_builder(flags).build(),
+            blocking_call_options: Self::get_builder(flags).build_blocking(),
             flags,
         }
     }
@@ -89,6 +99,17 @@ impl<'ctx> RedisClientCtxInterface for RedisClient<'ctx> {
             &self.user,
             command,
             &self.call_options.call_options,
+            args,
+        )
+    }
+
+    fn call_async(&self, command: &str, args: &[&[u8]]) -> PromiseReply<'static, '_> {
+        call_redis_command_async(
+            self.ctx,
+            &self.lib_meta_data.name,
+            &self.user,
+            command,
+            &self.call_options.blocking_call_options,
             args,
         )
     }
