@@ -995,3 +995,32 @@ redis.registerAsyncFunction("test",
     runUntil(env, True, lambda: int(env.cmd('get', 'x')) > 2)
     env.expect('CLIENT', 'PAUSE', '1000', 'all').equal('OK')
     future.expectError('Can not lock redis for write')
+
+@gearsTest()
+def testAvoidReplicationTrafficOnAsyncFunction(env):
+    """#!js api_version=1.0 name=lib
+var continue_run = null;
+
+redis.registerFunction("continue",
+    function() {
+        if (continue_run == null) {
+            return "no async set was triggered";
+        }
+        continue_run("OK");
+        return "OK";
+    },
+    {
+        flags: [redis.functionFlags.ALLOW_OOM]
+    }
+)
+
+redis.registerFunction("start", function(client, key, val){
+    return new Promise((resolve, reject) => {
+        continue_run = resolve;
+    });
+});
+    """
+    future = env.noBlockingTfcallAsync('lib', 'start')
+    runUntil(env, 'OK', lambda: env.tfcall('lib', 'continue'))
+    env.expectTfcall('lib', 'continue').equal('OK')
+    future.equal('OK')
