@@ -16,7 +16,9 @@ use redis_module::{
     BlockingCallOptions, CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply,
     PromiseCallReply, RedisGILGuard,
 };
-use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::{
+    BackendCtxInterfaceInitialised, InfoSectionData,
+};
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
@@ -42,7 +44,8 @@ use redis_module::server_events::{
 };
 use redis_module_macros::{
     command, config_changed_event_handler, cron_event_handler, flush_event_handler,
-    loading_event_handler, module_changed_event_handler, role_changed_event_handler,
+    info_command_handler, loading_event_handler, module_changed_event_handler,
+    role_changed_event_handler,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -992,7 +995,50 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     Status::Ok
 }
 
-const fn js_info(_ctx: &InfoContext, _for_crash_report: bool) {}
+#[info_command_handler]
+fn module_info(ctx: &InfoContext, _for_crash_report: bool) -> RedisResult<()> {
+    if !get_uninitialised_backends_mut().is_empty() {
+        let mut section_builder = ctx.builder().add_section("UninitialisedBackends");
+
+        for uninitialised_backend_name in get_uninitialised_backends_mut().keys() {
+            section_builder =
+                section_builder.field("backend_name", uninitialised_backend_name.as_str())?;
+        }
+
+        let _ = section_builder.build_section()?.build_info()?;
+    }
+
+    for backend in get_backends_mut().values_mut() {
+        let mut builder = ctx.builder();
+        let info = match backend.get_info() {
+            Some(info) => info,
+            None => continue,
+        };
+        for section in &info.sections {
+            let mut section_builder = builder.add_section(section.0);
+            match section.1 {
+                InfoSectionData::KeyValuePairs(map) => {
+                    for (key, value) in map {
+                        section_builder = section_builder.field(key, value.as_str())?;
+                    }
+                }
+                InfoSectionData::Dictionaries(dictionaries) => {
+                    for dictionary in dictionaries {
+                        let mut dictionary_builder = section_builder.add_dictionary(dictionary.0);
+                        for (key, value) in dictionary.1 {
+                            dictionary_builder = dictionary_builder.field(key, value.as_str())?;
+                        }
+                        section_builder = dictionary_builder.build_dictionary()?;
+                    }
+                }
+            }
+            builder = section_builder.build_section()?;
+        }
+        let _ = builder.build_info()?;
+    }
+
+    Ok(())
+}
 
 /// Verifies that we haven't reached an Out Of Memory situation.
 /// Returns `true` if the OOM isn't reached.
@@ -1516,7 +1562,6 @@ mod gears_module {
         allocator: (get_allocator!(), get_allocator!()),
         data_types: [REDIS_GEARS_TYPE],
         init: js_init,
-        info: js_info,
         commands: [],
         event_handlers: [
             [@STREAM: on_stream_touched],

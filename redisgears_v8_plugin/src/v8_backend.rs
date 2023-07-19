@@ -8,7 +8,9 @@ use bitflags::bitflags;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
 use redisgears_macros_internals::get_allow_deny_lists;
-use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::{
+    BackendCtxInterfaceInitialised, BackendInfo, InfoSectionData,
+};
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
@@ -738,5 +740,62 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 "Unknown subcommand '{sub_command}'",
             ))),
         }
+    }
+
+    fn get_info(&mut self) -> Option<BackendInfo> {
+        let sections = {
+            let libraries_stats = {
+                let mut isolate_stats_data = HashMap::new();
+
+                {
+                    let l = self.script_ctx_vec.lock().unwrap();
+                    l.iter().filter_map(|v| v.upgrade()).for_each(|v| {
+                        let mut data = HashMap::new();
+                        data.insert(
+                            "total_heap_size".to_owned(),
+                            v.isolate.total_heap_size().to_string(),
+                        );
+                        data.insert(
+                            "used_heap_size".to_owned(),
+                            v.isolate.used_heap_size().to_string(),
+                        );
+                        data.insert(
+                            "heap_size_limit".to_owned(),
+                            v.isolate.heap_size_limit().to_string(),
+                        );
+                        isolate_stats_data.insert(v.name.clone(), data);
+                    });
+                }
+
+                InfoSectionData::Dictionaries(isolate_stats_data)
+            };
+
+            let aggregated_libraries_stats = InfoSectionData::KeyValuePairs({
+                let (active, not_active) = {
+                    let l = self.script_ctx_vec.lock().unwrap();
+                    let active = l.iter().filter(|v| v.strong_count() > 0).count() as i64;
+                    let not_active = l.iter().filter(|v| v.strong_count() == 0).count() as i64;
+                    (active, not_active)
+                };
+
+                let mut data = HashMap::new();
+                data.insert("active".to_owned(), active.to_string());
+                data.insert("not_active".to_owned(), not_active.to_string());
+                data.insert(
+                    "combined_memory_limit".to_owned(),
+                    calc_isolates_used_memory().to_string(),
+                );
+                data
+            });
+
+            let mut sections = HashMap::new();
+            sections.insert("V8PerLibraryStatistics".to_owned(), libraries_stats);
+            sections.insert(
+                "V8AggregatedLibrariesStatistics".to_owned(),
+                aggregated_libraries_stats,
+            );
+            sections
+        };
+        Some(BackendInfo { sections })
     }
 }

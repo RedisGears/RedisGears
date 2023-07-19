@@ -5,6 +5,7 @@
  */
 
 use std::alloc::GlobalAlloc;
+use std::collections::HashMap;
 
 use redis_module::RedisValue;
 
@@ -13,6 +14,25 @@ use crate::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use crate::redisgears_plugin_api::GearsApiError;
 
 use super::prologue::ApiVersion;
+
+/// The type of information we can get from a backend that is useful to
+/// a user.
+#[derive(Debug, Clone)]
+pub enum InfoSectionData {
+    /// Simple key-value pairs.
+    KeyValuePairs(HashMap<String, String>),
+    /// Dictionaries have a name, and then under the name they have
+    /// key-value pairs.
+    Dictionaries(HashMap<String, HashMap<String, String>>),
+}
+
+/// The backend information split into sections.
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct BackendInfo {
+    /// A section always has a name and a set of values.
+    pub sections: HashMap<String, InfoSectionData>,
+}
 
 pub trait CompiledLibraryInterface {
     fn log_debug(&self, msg: &str);
@@ -64,6 +84,7 @@ pub trait BackendCtxInterfaceInitialised {
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError>;
     fn debug(&mut self, args: &[&str]) -> Result<RedisValue, GearsApiError>;
+    fn get_info(&mut self) -> Option<BackendInfo>;
 }
 
 pub trait BackendCtxInterfaceUninitialised {
