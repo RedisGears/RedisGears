@@ -125,7 +125,7 @@ impl<'ctx> RedisClientCtxInterface for RedisClient<'ctx> {
     fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError> {
         let _authenticate_scope = self
             .ctx
-            .autenticate_user(&self.user)
+            .authenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
         RedisAIModel::open_from_key(self.ctx, name)
             .map(|v| Box::new(v) as Box<dyn AIModelInterface>)
@@ -135,7 +135,7 @@ impl<'ctx> RedisClientCtxInterface for RedisClient<'ctx> {
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
         let _authenticate_scope = self
             .ctx
-            .autenticate_user(&self.user)
+            .authenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
         RedisAIScript::open_from_key(self.ctx, name)
             .map(|v| Box::new(v) as Box<dyn AIScriptInterface>)

@@ -88,7 +88,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError> {
         let ctx = &self.detached_ctx_guard;
         let _authenticate_scope = ctx
-            .autenticate_user(&self.user)
+            .authenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
         RedisAIModel::open_from_key(ctx, name)
             .map(|v| Box::new(v) as Box<dyn AIModelInterface>)
@@ -98,7 +98,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
         let ctx = &self.detached_ctx_guard;
         let _authenticate_scope = ctx
-            .autenticate_user(&self.user)
+            .authenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
         RedisAIScript::open_from_key(ctx, name)
             .map(|v| Box::new(v) as Box<dyn AIScriptInterface>)

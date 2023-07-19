@@ -591,7 +591,7 @@ pub(crate) fn call_redis_command(
     args: &[&[u8]],
 ) -> CallResult<'static> {
     let _authenticate_scope = ctx
-        .autenticate_user(user)
+        .authenticate_user(user)
         .map_err(|e| ErrorReply::Message(e.to_string()))?;
     ctx.call_ext(command, call_options, args)
 }
@@ -642,7 +642,7 @@ pub(crate) fn call_redis_command_async<'ctx>(
     args: &[&[u8]],
 ) -> PromiseReply<'static, 'ctx> {
     let _authenticate_scope = ctx
-        .autenticate_user(user)
+        .authenticate_user(user)
         .map_err(|e| ErrorReply::Message(e.to_string()));
     if let Err(e) = _authenticate_scope {
         return PromiseReply::Resolved(CallResult::Err(e));
