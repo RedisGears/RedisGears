@@ -1465,7 +1465,7 @@ pub(crate) fn initialize_globals_1_0(
                 let resolver = curr_ctx_scope.new_resolver();
                 let promise = resolver.get_promise();
                 let resolver_resolve = Arc::new(RefCellWrapper {
-                    ref_cell: RefCell::new(resolver.to_value().persist()),
+                    ref_cell: RefCell::new(Some(resolver.to_value().persist())),
                 });
                 let resolver_reject = Arc::clone(&resolver_resolve);
 
@@ -1474,7 +1474,7 @@ pub(crate) fn initialize_globals_1_0(
                         let script_ctx_ref_resolve = match script_ctx_ref_resolve.upgrade() {
                             Some(s) => s,
                             None => {
-                                resolver_resolve.ref_cell.borrow_mut().forget();
+                                resolver_resolve.ref_cell.borrow_mut().take().map(|mut v| v.forget());
                                 return Err("Library was deleted");
                             }
                         };
@@ -1489,7 +1489,7 @@ pub(crate) fn initialize_globals_1_0(
                                     match new_script_ctx_ref_resolve.upgrade() {
                                         Some(s) => s,
                                         None => {
-                                            resolver_resolve.ref_cell.borrow_mut().forget();
+                                            resolver_resolve.ref_cell.borrow_mut().take().map(|mut v| v.forget());
                                             res.forget();
                                             log_warning(
                                             "Library was delete while not all the jobs were done",
@@ -1502,12 +1502,12 @@ pub(crate) fn initialize_globals_1_0(
                                     new_script_ctx_ref_resolve.ctx.enter(&isolate_scope);
                                 let _trycatch = isolate_scope.new_try_catch();
                                 let res = res.take_local(&isolate_scope);
-                                let resolver = resolver_resolve
+                                resolver_resolve
                                     .ref_cell
-                                    .borrow_mut()
-                                    .take_local(&isolate_scope)
-                                    .as_resolver();
-                                new_script_ctx_ref_resolve.resolve(&resolver, &ctx_scope, &res);
+                                    .borrow_mut().take().map(|mut v| {
+                                        let resolver = v.take_local(&isolate_scope).as_resolver();
+                                        new_script_ctx_ref_resolve.resolve(&resolver, &ctx_scope, &res);
+                                    });
                             }));
                         Ok(None)
                     }
@@ -1518,7 +1518,7 @@ pub(crate) fn initialize_globals_1_0(
                         let script_ctx_ref_reject = match script_ctx_ref_reject.upgrade() {
                             Some(s) => s,
                             None => {
-                                resolver_reject.ref_cell.borrow_mut().forget();
+                                resolver_reject.ref_cell.borrow_mut().take().map(|mut v| v.forget());
                                 return Err("Library was deleted");
                             }
                         };
@@ -1534,7 +1534,7 @@ pub(crate) fn initialize_globals_1_0(
                                         Some(s) => s,
                                         None => {
                                             res.forget();
-                                            resolver_reject.ref_cell.borrow_mut().forget();
+                                            resolver_reject.ref_cell.borrow_mut().take().map(|mut v| v.forget());
                                             log_warning(
                                             "Library was delete while not all the jobs were done",
                                         );
@@ -1545,12 +1545,12 @@ pub(crate) fn initialize_globals_1_0(
                                 let ctx_scope = new_script_ctx_ref_reject.ctx.enter(&isolate_scope);
                                 let _trycatch = isolate_scope.new_try_catch();
                                 let res = res.take_local(&isolate_scope);
-                                let resolver = resolver_reject
+                                resolver_reject
                                     .ref_cell
-                                    .borrow_mut()
-                                    .take_local(&isolate_scope)
-                                    .as_resolver();
-                                new_script_ctx_ref_reject.reject(&resolver, &ctx_scope, &res);
+                                    .borrow_mut().take().map(|mut v|{
+                                        let resolver = v.take_local(&isolate_scope).as_resolver();
+                                        new_script_ctx_ref_reject.reject(&resolver, &ctx_scope, &res);
+                                    });
                             }));
                         Ok(None)
                     }

@@ -60,14 +60,30 @@ impl V8NotificationsCtxInternal {
             match res {
                 Some(res) => {
                     if res.is_promise() {
-                        self.script_ctx.handle_promise(
-                            &isolate_scope,
-                            &ctx_scope,
-                            &res.as_promise(),
-                            move |res| {
-                                ack_callback(res.map(|_| ()));
-                            },
-                        );
+                        let promise = res.as_promise();
+                        if self.script_ctx.is_reject_or_fulfilled(&promise) {
+                            self.script_ctx.promise_rejected_or_fulfilled(
+                                &isolate_scope,
+                                &ctx_scope,
+                                &promise,
+                                move |res| {
+                                    ack_callback(res.map(|_| ()));
+                                },
+                            );
+                        } else {
+                            // in case the promise was not yet resolved, it will be resolved when the Redis
+                            // GIL is not lock, so we must lock it before calling the ack callback.
+                            let locker: Box<dyn BackgroundRunFunctionCtxInterface> =
+                                notification_ctx.get_background_redis_client();
+                            self.script_ctx.promise_rejected_or_fulfilled_async(
+                                &ctx_scope,
+                                &promise,
+                                move |res| {
+                                    let _locker = locker.lock();
+                                    ack_callback(res.map(|_| ()));
+                                },
+                            );
+                        };
                         return;
                     } else {
                         Some(Ok(()))

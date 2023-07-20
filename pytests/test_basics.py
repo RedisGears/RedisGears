@@ -976,3 +976,51 @@ redis.registerFunction("n_notifications", ()=>{return n_notifications;}, {flags:
     env.expect('replicaof', 'localhost', '1111').equal('OK')
     env.cmd('get', 'x') # should trigger key miss notification but we should not count it because we are a replica
     env.expectTfcall('lib', 'n_notifications').equal(1)
+
+@gearsTest()
+def testAvoidReplicationTrafficOnAsyncFunction(env):
+    """#!js api_version=1.0 name=lib
+var n_notifications = 0;
+redis.registerAsyncFunction("test",
+    async (client) => {
+        while (true) {
+            client.block((c)=>{
+                c.call('incr', 'x');
+            });
+        }
+    }
+);
+    """
+    future = env.noBlockingTfcallAsync('lib', 'test')
+    runUntil(env, True, lambda: int(env.cmd('get', 'x')) > 2)
+    env.expect('CLIENT', 'PAUSE', '1000', 'all').equal('OK')
+    future.expectError('Can not lock redis for write')
+
+@gearsTest()
+def testAvoidReplicationTrafficOnAsyncFunction(env):
+    """#!js api_version=1.0 name=lib
+var continue_run = null;
+
+redis.registerFunction("continue",
+    function() {
+        if (continue_run == null) {
+            return "no async set was triggered";
+        }
+        continue_run("OK");
+        return "OK";
+    },
+    {
+        flags: [redis.functionFlags.ALLOW_OOM]
+    }
+)
+
+redis.registerFunction("start", function(client, key, val){
+    return new Promise((resolve, reject) => {
+        continue_run = resolve;
+    });
+});
+    """
+    future = env.noBlockingTfcallAsync('lib', 'start')
+    runUntil(env, 'OK', lambda: env.tfcall('lib', 'continue'))
+    env.expectTfcall('lib', 'continue').equal('OK')
+    future.equal('OK')
