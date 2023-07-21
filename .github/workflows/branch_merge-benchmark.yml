@@ -1,0 +1,59 @@
+name: Branch Merge benchmarks
+
+on:
+  push:
+      paths-ignore:
+          - '.circleci/**'
+          - 'docs/**'
+          - '*.md'
+      branches:
+          - main
+          - master
+          - '[0-9].[0-9].[0-9]'
+          - '[0-9].[0-9]'
+      tags:
+          - 'v[0-9].[0-9].[0-9]-rc[0-9]+'
+          - 'v[0-9].[0-9].[0-9]-m[0-9]+'
+          - 'v[0-9].[0-9].[0-9]+'
+
+jobs:
+  perf-ci:
+    name: Trigger CI benchmarks
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build release
+      run: cargo build --release --verbose
+
+    - name: Install terraform
+      env:
+        VERSION: 0.14.8
+      run: ./tests/benchmarks/getterraform
+    
+    - name: install benchmark dependencies
+      run: pip3 install -r ./tests/benchmarks/requirements.txt
+    
+    - name: Run benchmarks
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.PERFORMANCE_EC2_ACCESS_KEY }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.PERFORMANCE_EC2_SECRET_KEY }}
+        AWS_DEFAULT_REGION: ${{ secrets.PERFORMANCE_EC2_REGION }}
+        EC2_PRIVATE_PEM: ${{ secrets.PERFORMANCE_EC2_PRIVATE_PEM }}
+      run: |
+        cd tests/benchmarks
+        redisbench-admin run-remote \
+          --required-module redisgears_2 \
+          --module_path "../../target/release/libredisgears.so v8-plugin-path ../../target/release/libredisgears_v8_plugin.so" \
+          --github_actor ${{ github.triggering_actor }} \
+          --github_repo ${{ github.event.repository.name }} \
+          --github_org ${{ github.repository_owner }} \
+          --github_branch ${{ github.head_ref || github.ref_name }} \
+          --upload_results_s3 \
+          --triggering_env circleci \
+          --continue-on-module-check-error \
+          --fail_fast \
+          --push_results_redistimeseries \
+          --redistimeseries_host ${{ secrets.PERFORMANCE_RTS_HOST }} \
+          --redistimeseries_port ${{ secrets.PERFORMANCE_RTS_PORT }} \
+          --redistimeseries_pass '${{ secrets.PERFORMANCE_RTS_AUTH }}'
