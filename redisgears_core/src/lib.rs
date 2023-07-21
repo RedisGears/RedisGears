@@ -16,10 +16,10 @@ use redis_module::{
     BlockingCallOptions, CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply,
     PromiseCallReply, RedisGILGuard,
 };
-use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::{
-    BackendCtxInterfaceInitialised, InfoSectionData,
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{
+    FunctionFlags, InfoSectionData, ModuleInfo,
 };
-use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
 use serde::{Deserialize, Serialize};
@@ -198,7 +198,7 @@ struct GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
 
 struct GearsLibrary {
     gears_lib_ctx: GearsLibraryCtx,
-    _lib_ctx: Box<dyn LibraryCtxInterface>,
+    lib_ctx: Box<dyn LibraryCtxInterface>,
     compile_lib_internals: Arc<CompiledLibraryInternals>,
 }
 
@@ -995,47 +995,125 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     Status::Ok
 }
 
-#[info_command_handler]
-fn module_info(ctx: &InfoContext, _for_crash_report: bool) -> RedisResult<()> {
-    if !get_uninitialised_backends_mut().is_empty() {
-        let mut section_builder = ctx.builder().add_section("UninitialisedBackends");
-
-        for uninitialised_backend_name in get_uninitialised_backends_mut().keys() {
-            section_builder =
-                section_builder.field("backend_name", uninitialised_backend_name.as_str())?;
-        }
-
-        let _ = section_builder.build_section()?.build_info()?;
+fn build_uninitialised_backends_info(ctx: &InfoContext) -> RedisResult<()> {
+    if get_uninitialised_backends_mut().is_empty() {
+        return Ok(());
     }
 
-    for backend in get_backends_mut().values_mut() {
-        let mut builder = ctx.builder();
-        let info = match backend.get_info() {
-            Some(info) => info,
-            None => continue,
-        };
-        for section in &info.sections {
-            let mut section_builder = builder.add_section(section.0);
-            match section.1 {
-                InfoSectionData::KeyValuePairs(map) => {
-                    for (key, value) in map {
-                        section_builder = section_builder.field(key, value.as_str())?;
-                    }
-                }
-                InfoSectionData::Dictionaries(dictionaries) => {
-                    for dictionary in dictionaries {
-                        let mut dictionary_builder = section_builder.add_dictionary(dictionary.0);
-                        for (key, value) in dictionary.1 {
-                            dictionary_builder = dictionary_builder.field(key, value.as_str())?;
-                        }
-                        section_builder = dictionary_builder.build_dictionary()?;
-                    }
+    let mut section_builder = ctx.builder().add_section("UninitialisedBackends");
+
+    section_builder = get_uninitialised_backends_mut()
+        .keys()
+        .try_fold(section_builder, |section_builder, name| {
+            section_builder.field("backend_name", name.as_str())
+        })?;
+
+    let _ = section_builder.build_section()?.build_info()?;
+
+    Ok(())
+}
+
+fn build_backend_module_info(ctx: &InfoContext, info: ModuleInfo) -> RedisResult<()> {
+    let mut builder = ctx.builder();
+    for section in &info.sections {
+        let mut section_builder = builder.add_section(section.0);
+        match section.1 {
+            InfoSectionData::KeyValuePairs(map) => {
+                for (key, value) in map {
+                    section_builder = section_builder.field(key, value.as_str())?;
                 }
             }
-            builder = section_builder.build_section()?;
+            InfoSectionData::Dictionaries(dictionaries) => {
+                for dictionary in dictionaries {
+                    let mut dictionary_builder = section_builder.add_dictionary(dictionary.0);
+                    for (key, value) in dictionary.1 {
+                        dictionary_builder = dictionary_builder.field(key, value.as_str())?;
+                    }
+                    section_builder = dictionary_builder.build_dictionary()?;
+                }
+            }
         }
-        let _ = builder.build_info()?;
+        builder = section_builder.build_section()?;
     }
+
+    let _ = builder.build_info()?;
+
+    Ok(())
+}
+
+fn build_initialised_backends_info(ctx: &InfoContext) -> RedisResult<()> {
+    get_backends_mut()
+        .values_mut()
+        .filter_map(|b| b.get_info())
+        .try_for_each(|info| build_backend_module_info(ctx, info))
+}
+
+fn build_per_library_info(ctx: &InfoContext) -> RedisResult<()> {
+    let libraries = get_globals().libraries.lock()?;
+    if libraries.is_empty() {
+        return Ok(());
+    }
+
+    let builder = ctx.builder();
+    let section_builder = builder.add_section("PerLibraryInformation");
+    let mut dictionaries = HashMap::new();
+    for library in libraries.iter() {
+        let mut library_info = HashMap::new();
+
+        library_info.insert(
+            "function_count".to_owned(),
+            library.1.gears_lib_ctx.functions.len().to_string(),
+        );
+
+        library_info.insert(
+            "notification_consumers_count".to_owned(),
+            library
+                .1
+                .gears_lib_ctx
+                .notifications_consumers
+                .len()
+                .to_string(),
+        );
+
+        library_info.insert(
+            "stream_consumers_count".to_owned(),
+            library.1.gears_lib_ctx.stream_consumers.len().to_string(),
+        );
+
+        if let Some(info) = library.1.lib_ctx.get_info() {
+            if let Some(first_level) = info.sections.into_iter().next() {
+                if let InfoSectionData::KeyValuePairs(key_value_pairs) = first_level.1 {
+                    library_info.extend(key_value_pairs);
+                }
+            }
+        }
+
+        dictionaries.insert(library.0.to_owned(), library_info);
+    }
+
+    let section_builder =
+        dictionaries
+            .into_iter()
+            .try_fold(section_builder, |section_builder, d| {
+                let mut dictionaries_builder = section_builder.add_dictionary(&d.0);
+
+                for (k, v) in d.1 {
+                    dictionaries_builder = dictionaries_builder.field(&k, v)?;
+                }
+
+                dictionaries_builder.build_dictionary()
+            })?;
+
+    let _ = section_builder.build_section()?.build_info()?;
+
+    Ok(())
+}
+
+#[info_command_handler]
+fn module_info(ctx: &InfoContext, _for_crash_report: bool) -> RedisResult<()> {
+    build_uninitialised_backends_info(ctx)?;
+    build_initialised_backends_info(ctx)?;
+    build_per_library_info(ctx)?;
 
     Ok(())
 }

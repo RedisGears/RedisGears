@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{InfoSectionData, ModuleInfo};
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::CompiledLibraryInterface, load_library_ctx::LibraryCtxInterface,
     load_library_ctx::LoadLibraryCtxInterface, GearsApiError,
@@ -23,6 +24,7 @@ use v8_rs::v8::{
 
 use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -452,5 +454,33 @@ impl LibraryCtxInterface for V8LibraryCtx {
             }
         }
         Ok(())
+    }
+
+    fn get_info(&self) -> Option<ModuleInfo> {
+        let sections = {
+            let libraries_stats = {
+                let mut isolate_stats_data = HashMap::new();
+
+                isolate_stats_data.insert(
+                    "total_heap_size".to_owned(),
+                    self.script_ctx.isolate.total_heap_size().to_string(),
+                );
+                isolate_stats_data.insert(
+                    "used_heap_size".to_owned(),
+                    self.script_ctx.isolate.used_heap_size().to_string(),
+                );
+                isolate_stats_data.insert(
+                    "heap_size_limit".to_owned(),
+                    self.script_ctx.isolate.heap_size_limit().to_string(),
+                );
+
+                InfoSectionData::KeyValuePairs(isolate_stats_data)
+            };
+
+            let mut sections = HashMap::new();
+            sections.insert("V8PerLibraryStatistics".to_owned(), libraries_stats);
+            sections
+        };
+        Some(ModuleInfo { sections })
     }
 }

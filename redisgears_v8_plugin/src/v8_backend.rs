@@ -8,9 +8,8 @@ use bitflags::bitflags;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
 use redisgears_macros_internals::get_allow_deny_lists;
-use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::{
-    BackendCtxInterfaceInitialised, BackendInfo, InfoSectionData,
-};
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{InfoSectionData, ModuleInfo};
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
@@ -742,34 +741,8 @@ impl BackendCtxInterfaceInitialised for V8Backend {
         }
     }
 
-    fn get_info(&mut self) -> Option<BackendInfo> {
+    fn get_info(&mut self) -> Option<ModuleInfo> {
         let sections = {
-            let libraries_stats = {
-                let mut isolate_stats_data = HashMap::new();
-
-                {
-                    let l = self.script_ctx_vec.lock().unwrap();
-                    l.iter().filter_map(|v| v.upgrade()).for_each(|v| {
-                        let mut data = HashMap::new();
-                        data.insert(
-                            "total_heap_size".to_owned(),
-                            v.isolate.total_heap_size().to_string(),
-                        );
-                        data.insert(
-                            "used_heap_size".to_owned(),
-                            v.isolate.used_heap_size().to_string(),
-                        );
-                        data.insert(
-                            "heap_size_limit".to_owned(),
-                            v.isolate.heap_size_limit().to_string(),
-                        );
-                        isolate_stats_data.insert(v.name.clone(), data);
-                    });
-                }
-
-                InfoSectionData::Dictionaries(isolate_stats_data)
-            };
-
             let aggregated_libraries_stats = InfoSectionData::KeyValuePairs({
                 let (active, not_active) = {
                     let l = self.script_ctx_vec.lock().unwrap();
@@ -785,17 +758,35 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                     "combined_memory_limit".to_owned(),
                     calc_isolates_used_memory().to_string(),
                 );
+
+                {
+                    let l = self.script_ctx_vec.lock().unwrap();
+                    let (total_heap_size, used_heap_size, heap_size_limit) = l
+                        .iter()
+                        .filter_map(|v| v.upgrade())
+                        .fold((0, 0, 0), |mut acc, v| {
+                            acc.0 += v.isolate.total_heap_size();
+                            acc.1 += v.isolate.used_heap_size();
+                            acc.2 += v.isolate.heap_size_limit();
+                            acc
+                        });
+
+                    data.insert("total_heap_size".to_owned(), total_heap_size.to_string());
+                    data.insert("used_heap_size".to_owned(), used_heap_size.to_string());
+                    // TODO: this one is probably worthless.
+                    data.insert("heap_size_limit".to_owned(), heap_size_limit.to_string());
+                }
+
                 data
             });
 
             let mut sections = HashMap::new();
-            sections.insert("V8PerLibraryStatistics".to_owned(), libraries_stats);
             sections.insert(
-                "V8AggregatedLibrariesStatistics".to_owned(),
+                "V8AggregatedLibraryStatistics".to_owned(),
                 aggregated_libraries_stats,
             );
             sections
         };
-        Some(BackendInfo { sections })
+        Some(ModuleInfo { sections })
     }
 }

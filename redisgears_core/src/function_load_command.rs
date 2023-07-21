@@ -158,7 +158,7 @@ pub(crate) fn function_load_internal(
         gears_library.meta_data.name.to_string(),
         Arc::new(GearsLibrary {
             gears_lib_ctx: gears_library,
-            _lib_ctx: lib_ctx,
+            lib_ctx,
             compile_lib_internals,
         }),
     );
