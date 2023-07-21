@@ -16,7 +16,9 @@ use redis_module::{
     BlockingCallOptions, CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply,
     PromiseCallReply, RedisGILGuard,
 };
-use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::{
+    BackendCtxInterfaceInitialised, LoadingCtx,
+};
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
@@ -805,10 +807,9 @@ fn load_v8_backend(
 }
 
 fn initialize_v8_backend(
-    ctx: &Context,
+    _ctx: &Context,
     uninitialised_backend: Box<dyn BackendCtxInterfaceUninitialised>,
 ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
-    let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
     let name = uninitialised_backend.get_name();
     let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> = uninitialised_backend
         .initialize(BackendCtx {
@@ -833,7 +834,6 @@ fn initialize_v8_backend(
             get_v8_library_memory_delta: Box::new(|| {
                 V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
             }),
-            get_v8_flags: Box::new(move || v8_flags.to_owned()),
         })
         .map_err(|e| {
             RedisError::String(format!("Failed loading {} backend, {}.", name, e.get_msg()))
@@ -913,6 +913,14 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             return Status::Err;
         }
     };
+    let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
+    let on_load_res = v8_backend.on_load(&LoadingCtx {
+        get_v8_flags: Box::new(move || v8_flags.to_owned()),
+    });
+    if let Err(e) = on_load_res {
+        log::error!("{e}");
+        return Status::Err;
+    }
     let global_ctx = GlobalCtx {
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
