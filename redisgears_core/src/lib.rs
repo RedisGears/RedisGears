@@ -471,24 +471,15 @@ enum DbPolicy {
 
 impl DbPolicy {
     pub(crate) fn is_regular(&self) -> bool {
-        match self {
-            DbPolicy::Regular => true,
-            _ => false,
-        }
+        matches!(self, DbPolicy::Regular)
     }
 
     pub(crate) fn is_readonly(&self) -> bool {
-        match self {
-            DbPolicy::PseudoSlaveReadonly => true,
-            _ => false,
-        }
+        matches!(self, DbPolicy::PseudoSlaveReadonly)
     }
 
     pub(crate) fn is_pseudo_slave(&self) -> bool {
-        match self {
-            DbPolicy::PseudoSlaveReadonly | DbPolicy::PseudoSlave => true,
-            _ => false,
-        }
+        matches!(self, DbPolicy::PseudoSlaveReadonly | DbPolicy::PseudoSlave)
     }
 }
 
@@ -599,11 +590,14 @@ pub(crate) fn call_redis_command(
     ctx.call_ext(command, call_options, args)
 }
 
+type FutureHandlerContextCallback = dyn FnOnce(&Context, CallResult<'static>);
+type FutureHandlerContextDisposer = dyn FnOnce(&Context, bool);
+
 /// a struct that holds information about not yet resolve future replies.
 /// The struct allows to either abort the execution or invoke the on done callback.
 struct FutureHandlerContext {
-    callback: Option<Box<dyn FnOnce(&Context, CallResult<'static>)>>,
-    disposer: Option<Box<dyn FnOnce(&Context, bool)>>,
+    callback: Option<Box<FutureHandlerContextCallback>>,
+    disposer: Option<Box<FutureHandlerContextDisposer>>,
     command: Vec<Vec<u8>>,
 }
 
@@ -614,20 +608,27 @@ impl FutureHandlerContext {
         ctx: &Context,
         reply: Result<redis_module::CallReply<'static>, ErrorReply<'static>>,
     ) {
-        self.callback.take().map(|f| f(ctx, reply));
-        self.disposer.take().map(|f| f(ctx, false));
+        if let Some(callback) = self.callback.take() {
+            callback(ctx, reply);
+        }
+
+        if let Some(disposer) = self.disposer.take() {
+            disposer(ctx, false);
+        }
     }
 
     /// Abort the command invocation (if possible) and send an error as a reply to the
     /// on done callback.
     fn abort(&mut self, ctx: &Context) {
-        self.callback.take().map(|f| {
-            f(
+        if let Some(callback) = self.callback.take() {
+            callback(
                 ctx,
                 CallResult::Err(ErrorReply::Message("Command was aborted".to_owned())),
-            )
-        });
-        self.disposer.take().map(|f| f(ctx, true));
+            );
+        }
+        if let Some(disposer) = self.disposer.take() {
+            disposer(ctx, true);
+        }
     }
 }
 
@@ -661,7 +662,7 @@ pub(crate) fn call_redis_command_async<'ctx>(
                 let future_handler_context = FutureHandlerContext {
                     callback: Some(callback),
                     disposer: None,
-                    command: command,
+                    command,
                 };
                 let future_handler_context = Arc::new(RedisGILGuard::new(future_handler_context));
                 let future_handler_context_unblocked = Arc::clone(&future_handler_context);
@@ -794,13 +795,10 @@ fn load_v8_backend(
 
     let lib = unsafe { Library::new(&v8_path) }
         .map_err(|e| RedisError::String(format!("Failed loading '{}', {}", v8_path, e)))?;
-    let func: Symbol<unsafe fn(&Context) -> *mut dyn BackendCtxInterfaceUninitialised> =
-        unsafe { lib.get(b"initialize_plugin") }.map_err(|e| {
-            RedisError::String(format!(
-                "Failed getting initialize_plugin symbol, {}",
-                e.to_string()
-            ))
-        })?;
+    let func: Symbol<unsafe fn(&Context) -> *mut dyn BackendCtxInterfaceUninitialised> = unsafe {
+        lib.get(b"initialize_plugin")
+    }
+    .map_err(|e| RedisError::String(format!("Failed getting initialize_plugin symbol, {e}")))?;
     let backend = unsafe { Box::from_raw(func(ctx)) };
     let name = backend.get_name();
     log::info!("Registered backend: {name}.");
@@ -827,7 +825,7 @@ pub(crate) fn get_backend(
 ) -> Result<&'static mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
     get_backends_mut()
         .get_mut(name)
-        .ok_or_else(|| RedisError::Str("No such backend"))
+        .ok_or(RedisError::Str("No such backend"))
         .or_else(|_| {
             let uninitialised_backend = get_uninitialised_backends_mut()
                 .remove(name)
@@ -1152,7 +1150,7 @@ fn function_call_command(
     mut args: Skip<IntoIter<redis_module::RedisString>>,
     allow_block: bool,
 ) -> RedisResult {
-    let mut lib_func_name = args.next_arg()?.try_as_str()?.split(".");
+    let mut lib_func_name = args.next_arg()?.try_as_str()?.split('.');
 
     let library_name = lib_func_name
         .next()
@@ -1207,7 +1205,7 @@ fn function_call_command(
             args,
             flags: function.flags,
             lib_meta_data: Arc::clone(&lib.gears_lib_ctx.meta_data),
-            allow_block: allow_block,
+            allow_block,
         });
         if matches!(res, FunctionCallResult::Hold) && !allow_block {
             // If we reach here, it means that the plugin violates the API, it blocked the client even though it is not allow to.
@@ -1435,9 +1433,9 @@ fn on_flush_event(ctx: &Context, flush_event: FlushSubevent) {
 
 #[config_changed_event_handler]
 fn on_config_change(ctx: &Context, values: &[&str]) {
-    if let Some(_) = values
+    if values
         .iter()
-        .find(|v| **v == PSEUDO_SLAVE_READONLY_CONFIG_NAME || **v == PSEUDO_SLAVE_CONFIG_NAME)
+        .any(|v| *v == PSEUDO_SLAVE_READONLY_CONFIG_NAME || *v == PSEUDO_SLAVE_CONFIG_NAME)
     {
         let globals = get_globals_mut();
         globals.db_policy = get_db_policy(ctx);
@@ -1457,7 +1455,7 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
                 .drain(0..)
                 .filter_map(|v| {
                     let _ = v.upgrade()?;
-                    return Some(v);
+                    Some(v)
                 })
                 .collect();
             if res.is_empty() {
@@ -1479,7 +1477,7 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
 
 pub(crate) fn verify_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
-        return Err(format!("Empty name is not allowed"));
+        return Err("Empty name is not allowed".to_owned());
     }
     name.chars().try_for_each(|c| {
         if c.is_ascii_alphanumeric() || c == '_' {

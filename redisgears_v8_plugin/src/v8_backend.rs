@@ -310,7 +310,7 @@ pub(crate) fn bypass_memory_limit() -> bool {
         return true;
     }
     unsafe { GLOBAL.bypassed_memory_limit.as_ref().unwrap() }.store(false, Ordering::Relaxed);
-    return false;
+    false
 }
 
 pub(crate) struct V8Backend {
@@ -368,10 +368,12 @@ fn check_isolates_memory_limit(
         if !detected_memory_pressure {
             log_warning("Detects OOM state on the JS engine, will send memory pressure notification to all libraries.");
         }
-        script_ctx_vec.lock().unwrap().iter().for_each(|v| {
-            v.upgrade()
-                .map(|v| v.isolate.memory_pressure_notification());
-        });
+        script_ctx_vec
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.upgrade())
+            .for_each(|v| v.isolate.memory_pressure_notification());
         true
     } else {
         if detected_memory_pressure {
@@ -466,7 +468,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
         }));
 
         let flags = get_v8_flags();
-        let flags = if flags.starts_with("'") && flags.len() > 1 {
+        let flags = if flags.starts_with('\'') && flags.len() > 1 {
             &flags[1..flags.len() - 1]
         } else {
             &flags
@@ -593,7 +595,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
                         let msg = format!("{msg}, library={}, used_heap_size={}, total_heap_size={}", script_ctx.name, script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
                         let memory_delta = memory_delta();
-                        let new_isolate_limit = (usize::max(script_ctx.isolate.total_heap_size(), curr_limit) + memory_delta) as usize;
+                        let new_isolate_limit = usize::max(script_ctx.isolate.total_heap_size(), curr_limit) + memory_delta;
 
                         if calc_isolates_used_memory() + memory_delta >= max_memory_limit() {
                             unsafe { GLOBAL.bypassed_memory_limit.as_ref().unwrap() }.store(true, Ordering::Relaxed);

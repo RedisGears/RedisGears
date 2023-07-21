@@ -159,10 +159,11 @@ impl V8StreamCtxInternals {
                             &ctx_scope,
                             &promise,
                             move |res| {
-                                Some(res.map_or_else(
-                                    |e| StreamRecordAck::Nack(e),
-                                    |_| StreamRecordAck::Ack,
-                                ))
+                                Some(
+                                    res.map_or_else(StreamRecordAck::Nack, |_| {
+                                        StreamRecordAck::Ack
+                                    }),
+                                )
                             },
                         )
                         .unwrap_or_else(|| {
@@ -170,10 +171,9 @@ impl V8StreamCtxInternals {
                                 &ctx_scope,
                                 &promise,
                                 move |res| {
-                                    ack_callback(res.map_or_else(
-                                        |e| StreamRecordAck::Nack(e),
-                                        |_| StreamRecordAck::Ack,
-                                    ));
+                                    ack_callback(res.map_or_else(StreamRecordAck::Nack, |_| {
+                                        StreamRecordAck::Ack
+                                    }));
                                 },
                             );
                             None
@@ -294,10 +294,11 @@ impl V8StreamCtxInternals {
                             move |res| {
                                 let _unlocker =
                                     res.as_ref().map(|v| v.isolate_scope.new_unlocker());
-                                ack_callback(res.map_or_else(
-                                    |e| StreamRecordAck::Nack(e),
-                                    |_| StreamRecordAck::Ack,
-                                ));
+                                ack_callback(
+                                    res.map_or_else(StreamRecordAck::Nack, |_| {
+                                        StreamRecordAck::Ack
+                                    }),
+                                );
                             },
                         );
                         return;
