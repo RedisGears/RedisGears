@@ -20,7 +20,7 @@ RUN bash -l -c "$HOME/.cargo/bin/cargo build --release -vv"
 RUN bash -l -c "$HOME/.cargo/bin/cargo test -vv"
 
 WORKDIR /build/pytests
-RUN ./run_tests.sh -t test_errors:testJSStackOverflow -s
+RUN ./run_tests.sh
 
 WORKDIR /build
 RUN bash -l -c "target/release/packer"
