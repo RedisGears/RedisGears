@@ -913,10 +913,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             return Status::Err;
         }
     };
-    let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
-    let on_load_res = v8_backend.on_load(&LoadingCtx {
-        get_v8_flags: Box::new(move || v8_flags.to_owned()),
-    });
+    let on_load_res = v8_backend.on_load(&LoadingCtx::new(V8_FLAGS.lock(ctx).to_owned()));
     if let Err(e) = on_load_res {
         log::error!("{e}");
         return Status::Err;

@@ -51,7 +51,17 @@ pub struct BackendCtx {
 }
 
 pub struct LoadingCtx {
-    pub get_v8_flags: Box<dyn Fn() -> String>,
+    v8_flags: String,
+}
+
+impl LoadingCtx {
+    pub fn new(v8_flags: String) -> LoadingCtx {
+        LoadingCtx { v8_flags }
+    }
+
+    pub fn get_v8_flags(&self) -> &str {
+        &self.v8_flags
+    }
 }
 
 /// The trait which is only implemented for a successfully initialised

@@ -436,7 +436,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
     }
 
     fn on_load(&self, on_load_ctx: &LoadingCtx) -> Result<(), GearsApiError> {
-        let flags = (on_load_ctx.get_v8_flags)();
+        let flags = on_load_ctx.get_v8_flags();
         let flags = if flags.starts_with("'") && flags.len() > 1 {
             &flags[1..flags.len() - 1]
         } else {
