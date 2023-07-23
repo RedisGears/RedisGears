@@ -16,9 +16,7 @@ use redis_module::{
     BlockingCallOptions, CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply,
     PromiseCallReply, RedisGILGuard,
 };
-use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::{
-    BackendCtxInterfaceInitialised, LoadingCtx,
-};
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
@@ -811,31 +809,8 @@ fn initialize_v8_backend(
     uninitialised_backend: Box<dyn BackendCtxInterfaceUninitialised>,
 ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
     let name = uninitialised_backend.get_name();
-    let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> = uninitialised_backend
-        .initialize(BackendCtx {
-            allocator: &RedisAlloc,
-            log_info: Box::new(|msg| log::info!("{msg}")),
-            log_trace: Box::new(|msg| log::trace!("{msg}")),
-            log_debug: Box::new(|msg| log::debug!("{msg}")),
-            log_error: Box::new(|msg| log::error!("{msg}")),
-            log_warning: Box::new(|msg| log::warn!("{msg}")),
-            get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
-                FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
-                FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
-            }),
-            get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
-            get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
-            get_v8_library_initial_memory: Box::new(|| {
-                V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
-            }),
-            get_v8_library_initial_memory_limit: Box::new(|| {
-                V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed) as usize
-            }),
-            get_v8_library_memory_delta: Box::new(|| {
-                V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
-            }),
-        })
-        .map_err(|e| {
+    let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> =
+        uninitialised_backend.initialize().map_err(|e| {
             RedisError::String(format!("Failed loading {} backend, {}.", name, e.get_msg()))
         })?;
     let version = initialised_backend.get_version();
@@ -913,7 +888,34 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             return Status::Err;
         }
     };
-    let on_load_res = v8_backend.on_load(&LoadingCtx::new(V8_FLAGS.lock(ctx).to_owned()));
+
+    let v8_flags = V8_FLAGS.lock(ctx).to_owned();
+    let backend_ctx = BackendCtx {
+        allocator: &RedisAlloc,
+        log_info: Box::new(|msg| log::info!("{msg}")),
+        log_trace: Box::new(|msg| log::trace!("{msg}")),
+        log_debug: Box::new(|msg| log::debug!("{msg}")),
+        log_error: Box::new(|msg| log::error!("{msg}")),
+        log_warning: Box::new(|msg| log::warn!("{msg}")),
+        get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
+            FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
+            FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
+        }),
+        get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
+        get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
+        get_v8_library_initial_memory: Box::new(|| {
+            V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
+        }),
+        get_v8_library_initial_memory_limit: Box::new(|| {
+            V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed) as usize
+        }),
+        get_v8_library_memory_delta: Box::new(|| {
+            V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
+        }),
+        get_v8_flags: Box::new(move || v8_flags.to_owned()),
+    };
+
+    let on_load_res = v8_backend.on_load(backend_ctx);
     if let Err(e) = on_load_res {
         log::error!("{e}");
         return Status::Err;

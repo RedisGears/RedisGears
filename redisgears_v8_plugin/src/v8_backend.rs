@@ -8,9 +8,7 @@ use bitflags::bitflags;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
 use redisgears_macros_internals::get_allow_deny_lists;
-use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::{
-    BackendCtxInterfaceInitialised, LoadingCtx,
-};
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
@@ -266,6 +264,14 @@ pub(crate) fn get_global_option() -> GlobalOptions {
     unsafe { &GLOBAL }.global_options
 }
 
+/// Get the given globals option.
+pub(crate) fn get_v8_flags() -> String {
+    unsafe { &GLOBAL }
+        .backend_ctx
+        .as_ref()
+        .map_or_else(|| "".to_owned(), |v| (v.get_v8_flags)())
+}
+
 /// Return the delta by which we should increase
 /// an isolate memory limit, as long as the max
 /// memory did not yet reached.
@@ -435,20 +441,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
         "js"
     }
 
-    fn on_load(&self, on_load_ctx: &LoadingCtx) -> Result<(), GearsApiError> {
-        let flags = on_load_ctx.get_v8_flags();
-        let flags = if flags.starts_with("'") && flags.len() > 1 {
-            &flags[1..flags.len() - 1]
-        } else {
-            &flags
-        };
-        v8_init_platform(1, Some(flags)).map_err(GearsApiError::new)
-    }
-
-    fn initialize(
-        self: Box<Self>,
-        backend_ctx: BackendCtx,
-    ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
+    fn on_load(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError> {
         unsafe {
             GLOBAL.backend_ctx = Some(backend_ctx);
             GLOBAL.bypassed_memory_limit = Some(AtomicBool::new(false));
@@ -471,6 +464,19 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
             }
         }));
 
+        let flags = get_v8_flags();
+        let flags = if flags.starts_with("'") && flags.len() > 1 {
+            &flags[1..flags.len() - 1]
+        } else {
+            &flags
+        };
+
+        v8_init_platform(1, Some(flags)).map_err(GearsApiError::new)
+    }
+
+    fn initialize(
+        self: Box<Self>,
+    ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
         self.initialize_v8_engine()?;
         self.spawn_background_maintenance_thread()?;
 
