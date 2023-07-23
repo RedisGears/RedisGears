@@ -1,0 +1,4 @@
+FROM ubuntu:jammy
+
+RUN mkdir -p /build/target/release
+COPY --from=builder /build/target/release/*.zip /build/target/release
