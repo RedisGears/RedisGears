@@ -23,7 +23,7 @@ jobs:
       env:
         V8_VERSION: main
         V8_UPDATE_HEADERS: "yes"
-      run: cargo build --release --verbose
+      run: cargo build --release -vv
 
     - name: Install terraform
       env:

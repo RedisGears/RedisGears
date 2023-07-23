@@ -26,7 +26,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build release
-      run: cargo build --release --verbose
+      run: cargo build --release -vv
 
     - name: Install terraform
       env:
