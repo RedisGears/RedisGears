@@ -1,3 +1,4 @@
+# due to a github docker size issue, we teporarily copy the build outputs to another image
 FROM ubuntu:jammy
 
 RUN mkdir -p /build/target/release
