@@ -16,7 +16,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LibraryCtxInterface, GearsApiError,
 };
 use v8_rs::v8::isolate_scope::GarbageCollectionJobType;
-use v8_rs::v8::v8_version;
+use v8_rs::v8::{v8_init_platform, v8_version};
 
 use crate::v8_native_functions::{initialize_globals_for_version, ApiVersionSupported};
 use crate::v8_script_ctx::V8ScriptCtx;
@@ -264,6 +264,14 @@ pub(crate) fn get_global_option() -> GlobalOptions {
     unsafe { &GLOBAL }.global_options
 }
 
+/// Get the given globals option.
+pub(crate) fn get_v8_flags() -> String {
+    unsafe { &GLOBAL }
+        .backend_ctx
+        .as_ref()
+        .map_or_else(|| "".to_owned(), |v| (v.get_v8_flags)())
+}
+
 /// Return the delta by which we should increase
 /// an isolate memory limit, as long as the max
 /// memory did not yet reached.
@@ -386,7 +394,7 @@ impl V8Backend {
         }
     }
 
-    fn initialize_v8_engine(&self, flags: &str) -> Result<(), GearsApiError> {
+    fn initialize_v8_engine(&self) -> Result<(), GearsApiError> {
         v8_init_with_error_handlers(
             Box::new(|line, msg| {
                 let msg = format!("v8 fatal error on {}, {}", line, msg);
@@ -406,8 +414,6 @@ impl V8Backend {
                 }
                 panic!("{}", msg);
             }),
-            1,
-            Some(flags),
         )
         .map_err(GearsApiError::new)
     }
@@ -435,16 +441,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
         "js"
     }
 
-    fn initialize(
-        self: Box<Self>,
-        backend_ctx: BackendCtx,
-    ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
-        let flags = (backend_ctx.get_v8_flags)();
-        let flags = if flags.starts_with("'") && flags.len() > 1 {
-            &flags[1..flags.len() - 1]
-        } else {
-            &flags
-        };
+    fn on_load(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError> {
         unsafe {
             GLOBAL.backend_ctx = Some(backend_ctx);
             GLOBAL.bypassed_memory_limit = Some(AtomicBool::new(false));
@@ -467,7 +464,20 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
             }
         }));
 
-        self.initialize_v8_engine(&flags)?;
+        let flags = get_v8_flags();
+        let flags = if flags.starts_with("'") && flags.len() > 1 {
+            &flags[1..flags.len() - 1]
+        } else {
+            &flags
+        };
+
+        v8_init_platform(1, Some(flags)).map_err(GearsApiError::new)
+    }
+
+    fn initialize(
+        self: Box<Self>,
+    ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
+        self.initialize_v8_engine()?;
         self.spawn_background_maintenance_thread()?;
 
         Ok(self)

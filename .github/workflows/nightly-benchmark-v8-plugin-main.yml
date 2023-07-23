@@ -14,21 +14,16 @@ on:
 
 jobs:
   perf-ci:
-    strategy:
-      matrix:
-        ref: ['master','2.0']
     name: Trigger CI benchmarks
     runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v3
-      with:
-        ref: ${{ matrix.ref }}
     - name: Build release
       env:
         V8_VERSION: main
         V8_UPDATE_HEADERS: "yes"
-      run: cargo build --release --verbose
+      run: cargo build --release -vv
 
     - name: Install terraform
       env:
@@ -52,7 +47,7 @@ jobs:
           --github_actor ${{ github.triggering_actor }} \
           --github_repo ${{ github.event.repository.name }} \
           --github_org ${{ github.repository_owner }} \
-          --github_branch ${{ github.head_ref || github.ref_name }} \
+          --github_branch ${{ github.head_ref || github.ref_name }}-v8-main \
           --upload_results_s3 \
           --triggering_env circleci \
           --continue-on-module-check-error \

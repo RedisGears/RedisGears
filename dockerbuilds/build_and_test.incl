@@ -14,13 +14,17 @@ RUN sh install_rust.sh -y --default-toolchain={{ MSRV }}
 {% else %}
 RUN sh install_rust.sh -y
 {% endif %}
-RUN bash -l -c "$HOME/.cargo/bin/cargo build --verbose"
-RUN bash -l -c "$HOME/.cargo/bin/cargo build --release --verbose"
+RUN bash -l -c "$HOME/.cargo/bin/cargo build -vv"
+RUN bash -l -c "$HOME/.cargo/bin/cargo build --release -vv"
 
-RUN bash -l -c "$HOME/.cargo/bin/cargo test --verbose"
+RUN bash -l -c "$HOME/.cargo/bin/cargo test -vv"
 
 WORKDIR /build/pytests
 RUN ./run_tests.sh
 
 WORKDIR /build
 RUN bash -l -c "target/release/packer"
+
+# to reduce disk size
+# https://github.com/docker/buildx/issues/593
+RUN rm -rf target/release/deps target/debug/deps target/debug/build target/release/build
