@@ -89,7 +89,7 @@ jobs:
             docker images
 
         - name: extract
-          #if: ${{inputs.publish == true}}
+          if: ${{inputs.publish == true}}
           id: extract
           uses: shrink/actions-docker-extract@v2
           with:

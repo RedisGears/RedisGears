@@ -24,7 +24,3 @@ RUN ./run_tests.sh
 
 WORKDIR /build
 RUN bash -l -c "target/release/packer"
-
-# to reduce disk size
-# https://github.com/docker/buildx/issues/593
-RUN rm -rf target/release/deps target/debug/deps target/debug/build target/release/build
