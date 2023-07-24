@@ -763,20 +763,17 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
                 {
                     let l = self.script_ctx_vec.lock().unwrap();
-                    let (total_heap_size, used_heap_size, heap_size_limit) = l
+                    let (total_heap_size, used_heap_size) = l
                         .iter()
                         .filter_map(|v| v.upgrade())
-                        .fold((0, 0, 0), |mut acc, v| {
+                        .fold((0, 0), |mut acc, v| {
                             acc.0 += v.isolate.total_heap_size();
                             acc.1 += v.isolate.used_heap_size();
-                            acc.2 += v.isolate.heap_size_limit();
                             acc
                         });
 
                     data.insert("total_heap_size".to_owned(), total_heap_size.to_string());
                     data.insert("used_heap_size".to_owned(), used_heap_size.to_string());
-                    // TODO: this one is probably worthless.
-                    data.insert("heap_size_limit".to_owned(), heap_size_limit.to_string());
                 }
 
                 data
