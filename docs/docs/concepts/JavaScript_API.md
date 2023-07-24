@@ -17,7 +17,7 @@ The Triggers and Functions JavaScript API provides a singleton instance of an ob
 
 * Since version: 2.0.0
 
-The `redis.registerFunction()` registers a User Function that can be called with `TFCALL`.
+Register a new function that can later be invoke using `TFCALL` command.
 
 ```JavaScript
 // Object with all arguments
@@ -44,6 +44,8 @@ redis.registerFunction(
 
 * Since version: 2.0.0
 
+Register a new async function that can later be invoke using `TFCALLASYNC` command.
+
 ```JavaScript
 // Object with all mandatory and optional arguments
 redis.registerAsyncFunction({
@@ -66,6 +68,8 @@ redis.registerAsyncFunction(
 ### `redis.registerKeySpaceTrigger`
 
 * Since version: 2.0.0
+
+Register a key space notification trigger that will run whenever a key space notification fired.
 
 ```JavaScript
 redis.registerKeySpaceTrigger({
@@ -95,6 +99,8 @@ redis.registerKeySpaceTrigger(
 
 * Since version: 2.0.0
 
+Register a stream trigger that will be invoke whenever a data is added to a stream.
+
 ```JavaScript
 redis.registerStreamTrigger({
   name: 'foo',
@@ -121,6 +127,8 @@ redis.registerStreamTrigger(
 
 * Since version: 2.0.0
 
+Register a cluster function that can later be called using `async_client.runOnKey()` or `async_client.runOnShards()`
+
 ```JavaScript
 redis.registerClusterFunction(
   'foo', //name
@@ -142,9 +150,13 @@ var configExample = redis.config.example_config;
 
 ## Client object
 
+Client object that is used to perform operations on Redis.
+
 ### `client.call`
 
 * Since version: 2.0.0
+
+Run a command on Redis. The command is executed on the current Redis instrance.
 
 ```JavaScript
 client.call(
@@ -157,6 +169,8 @@ client.call(
 
 * Since version: 2.0.0
 
+Run a command on Redis but does not perform UTF8 decoding on the result. The command is executed on the current Redis instrance.
+
 ```JavaScript
 client.callRaw(
   '',
@@ -164,19 +178,39 @@ client.callRaw(
 )
 ```
 
-### `client.block`
+### `client.callAsync`
 
 * Since version: 2.0.0
 
+Call a command on Redis. Allow Redis to block the execution if needed (like `blpop` command) and return the result asynchronously. Returns a promise object that will be resolved when the command invocation finished.
+
 ```JavaScript
-client.block(
-  function(client){}
+client.callAsync(
+  '',
+  ...args
 )
 ```
+
+
+### `client.callAsyncRaw`
+
+* Since version: 2.0.0
+
+Call a command on Redis. Allow Redis to block the execution if needed (like `blpop` command) and return the result asynchronously. Returns a promise object that will be resolved when the command invocation finished. The command is executed on the current Redis instrance.
+
+```JavaScript
+client.callRaw(
+  '',
+  ...args
+)
+```
+
 
 ### `client.isBlockAllowed`
 
 * Since version: 2.0.0
+
+Return true if it is allow to return promise from the function callback. In case it is allowed and a promise is return, Redis will wait for the promise to be fulfilled and only then will return the function result.
 
 ```JavaScript
 client.isBlockAllowed(); // True / False
@@ -186,31 +220,65 @@ client.isBlockAllowed(); // True / False
 
 * Since version: 2.0.0
 
+Execute the given function asynchroniusly. Return a promise that will be fulfilled when the promise will be resolved/rejected.
+
+
 ```JavaScript
 client.executeAsync(
   async function(client){}
 )
 ```
 
-### client.runOnShards
+
+
+## AsyncClient object
+
+Background client object that is used to perform background operation on Redis.
+This client is given to any background task that runs as a JS coroutine.
+
+
+### `async_client.block`
 
 * Since version: 2.0.0
 
+Blocks Redis for command invocation. All the command that are executed inside the given function is considered atomic and will be wrapped with `Multi/Exec` and send to the replica/AOF.
+
 ```JavaScript
-client.runOnShards(
-  'foo', //name
-  ...args //arguments
+async_client.block(
+  function(client){}
 )
 ```
 
-### client.runOnKey
+### `async_client.runOnKey`
 
 * Since version: 2.0.0
 
+Runs a remote function on a given key. If the key located on the current shard on which we currently runs on, the remote function will run write away. Otherwise the remote function will run on the remote shard. Returns a promise which will be fulfilled when the invocation finishes. Notice that the remote function must return a json serializable result so we can serialize the result back to the original shard. 
+
+Notice that remote function can only perform read operations, not writes are allowed.
+
+
 ```JavaScript
-client.runOnKey(
+async_client.runOnKey(
   'key1', // key
   'foo', // function name
   ...args
+)
+```
+
+### `async_client.runOnShards`
+
+* Since version: 2.0.0
+
+Runs a remote function on all the shards. Returns a promise which will be fulfilled when the invocation finishes on all the shards.
+ 
+The result is array of 2 elements, the first is another array of all the results. The second is an array of all the errors happened durring the invocation. Notice that the remote function must return a json serializable result so we can serialize the result back to the original shard.
+
+Notice that remote function can only perform read operations, not writes are allowed.
+
+```JavaScript
+async_client.runOnShards(
+  'foo', //name
+  ...args //arguments
 )
 ```
