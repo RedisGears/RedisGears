@@ -31,8 +31,13 @@ lazy_static! {
     /// Configuration value indicates the timeout for remote tasks that runs on a remote shard.
     pub(crate) static ref REMOTE_TASK_DEFAULT_TIMEOUT: AtomicI64 = AtomicI64::default();
 
-    /// Configuration value indicates the timeout for locking Redis.
+    /// Configuration value indicates the timeout for locking Redis (except
+    /// for the loading from RDB. For that, see the [`RDB_LOCK_REDIS_TIMEOUT`]).
     pub(crate) static ref LOCK_REDIS_TIMEOUT: AtomicI64 = AtomicI64::default();
+
+    /// Configuration value indicates the timeout for locking Redis when
+    /// loading from RDB.
+    pub(crate) static ref RDB_LOCK_REDIS_TIMEOUT: AtomicI64 = AtomicI64::default();
 
     /// Configuration value indicates the gears box url.
     pub(crate) static ref GEARS_BOX_ADDRESS: RedisGILGuard<String> = RedisGILGuard::default();

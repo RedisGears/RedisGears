@@ -45,6 +45,7 @@ pub struct BackendCtx {
     pub log_error: Box<dyn Fn(&str) + 'static>,
     pub get_on_oom_policy: Box<dyn Fn() -> LibraryFatalFailurePolicy + 'static>,
     pub get_lock_timeout: Box<dyn Fn() -> u128 + 'static>,
+    pub get_rdb_lock_timeout: Box<dyn Fn() -> u128 + 'static>,
     pub get_v8_maxmemory: Box<dyn Fn() -> usize + 'static>,
     pub get_v8_library_initial_memory: Box<dyn Fn() -> usize + 'static>,
     pub get_v8_library_initial_memory_limit: Box<dyn Fn() -> usize + 'static>,

@@ -60,7 +60,7 @@ def testNoRegistrations(env):
     script = '''#!js api_version=1.0 name=foo
 
     '''
-    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains("No function nor registrations was registered")
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains("Neither function nor other registrations were found")
 
 @gearsTest()
 def testBlockRedisTwice(env):

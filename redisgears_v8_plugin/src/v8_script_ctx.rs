@@ -70,11 +70,10 @@ impl GilStateCtx {
     }
 
     pub(crate) fn git_lock_duration_ms(&self) -> u128 {
-        let duration = match SystemTime::now().duration_since(self.lock_time) {
-            Ok(d) => d,
-            Err(_) => return 0,
-        };
-        duration.as_millis()
+        SystemTime::now()
+            .duration_since(self.lock_time)
+            .unwrap_or_default()
+            .as_millis()
     }
 
     pub(crate) fn set_lock_timedout(&mut self) {
@@ -121,6 +120,10 @@ pub(crate) struct V8ScriptCtx {
     /// and conduct timeout checks.
     pub(crate) is_running: AtomicBool,
 
+    /// If set to [`true`], then the script is currently being loaded,
+    /// or evaluated for the first time, from an RDB.
+    pub(crate) is_being_loaded_from_rdb: AtomicBool,
+
     /// Signifies the present locking status of the running JavaScript code,
     /// enabling us to distinguish between background JS code execution and JS code that holds a lock on Redis.
     pub(crate) lock_state: RefCellWrapper<GilStateCtx>,
@@ -149,10 +152,17 @@ impl V8ScriptCtx {
             tensor_object_template,
             compiled_library_api,
             is_running: AtomicBool::new(false),
+            is_being_loaded_from_rdb: AtomicBool::new(false),
             lock_state: RefCellWrapper {
                 ref_cell: RefCell::new(GilStateCtx::new()),
             },
         }
+    }
+
+    /// Returns [`true`] if the script is currently being loaded from
+    /// an RDB.
+    pub(crate) fn is_being_loaded_from_rdb(&self) -> bool {
+        self.is_being_loaded_from_rdb.load(Ordering::Relaxed)
     }
 
     /// Perform necessary operation before running JS code.
@@ -233,14 +243,14 @@ impl V8ScriptCtx {
         &self,
         script: &V8LocalScript<'isolate_scope, 'isolate>,
         ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
-        gil_statuc: GilStatus,
+        gil_status: GilStatus,
     ) -> Option<V8LocalValue<'isolate_scope, 'isolate>> {
         let old_val = self.before_run();
-        if gil_statuc.is_locked() {
+        if gil_status.is_locked() {
             self.after_lock_gil();
         }
         let res = script.run(ctx_scope);
-        if gil_statuc.is_locked() {
+        if gil_status.is_locked() {
             self.before_release_gil();
         }
         self.after_run(old_val);
@@ -423,12 +433,17 @@ impl LibraryCtxInterface for V8LibraryCtx {
     fn load_library(
         &self,
         load_library_ctx: &dyn LoadLibraryCtxInterface,
+        is_being_loaded_from_rdb: bool,
     ) -> Result<(), GearsApiError> {
         let isolate_scope = self.script_ctx.isolate.enter();
         let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
 
         let script = self.script_ctx.script.to_local(&isolate_scope);
+
+        self.script_ctx
+            .is_being_loaded_from_rdb
+            .store(is_being_loaded_from_rdb, Ordering::SeqCst);
 
         // set private content
         let _load_library_guard = self.script_ctx.ctx.set_private_data(0, &load_library_ctx);
@@ -449,6 +464,11 @@ impl LibraryCtxInterface for V8LibraryCtx {
                 )));
             }
         }
+
+        self.script_ctx
+            .is_being_loaded_from_rdb
+            .store(false, Ordering::Release);
+
         Ok(())
     }
 
