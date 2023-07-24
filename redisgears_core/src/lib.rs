@@ -1059,8 +1059,27 @@ fn build_per_library_info(ctx: &InfoContext) -> RedisResult<()> {
         let mut library_info = HashMap::new();
 
         library_info.insert(
-            "function_count".to_owned(),
-            library.1.gears_lib_ctx.functions.len().to_string(),
+            "function_count(sync)".to_owned(),
+            library
+                .1
+                .gears_lib_ctx
+                .functions
+                .iter()
+                .filter(|f| !f.1.is_async)
+                .count()
+                .to_string(),
+        );
+
+        library_info.insert(
+            "function_count(async)".to_owned(),
+            library
+                .1
+                .gears_lib_ctx
+                .functions
+                .iter()
+                .filter(|f| f.1.is_async)
+                .count()
+                .to_string(),
         );
 
         library_info.insert(
@@ -1076,6 +1095,31 @@ fn build_per_library_info(ctx: &InfoContext) -> RedisResult<()> {
         library_info.insert(
             "stream_consumers_count".to_owned(),
             library.1.gears_lib_ctx.stream_consumers.len().to_string(),
+        );
+
+        library_info.insert(
+            "api_version".to_owned(),
+            library.1.gears_lib_ctx.meta_data.api_version.to_string(),
+        );
+
+        library_info.insert(
+            "pending_jobs_count".to_owned(),
+            library.1.compile_lib_internals.pending_jobs().to_string(),
+        );
+
+        library_info.insert(
+            "pending_async_calls_count".to_owned(),
+            get_globals()
+                .future_handlers
+                .get(&library.1.gears_lib_ctx.meta_data.name)
+                .iter()
+                .count()
+                .to_string(),
+        );
+
+        library_info.insert(
+            "cluster_functions_count".to_owned(),
+            library.1.gears_lib_ctx.remote_functions.len().to_string(),
         );
 
         if let Some(info) = library.1.lib_ctx.get_info() {
