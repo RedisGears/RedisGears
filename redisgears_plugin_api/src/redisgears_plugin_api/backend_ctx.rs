@@ -48,7 +48,7 @@ pub struct BackendCtx {
     pub get_v8_library_initial_memory: Box<dyn Fn() -> usize + 'static>,
     pub get_v8_library_initial_memory_limit: Box<dyn Fn() -> usize + 'static>,
     pub get_v8_library_memory_delta: Box<dyn Fn() -> usize + 'static>,
-    pub get_v8_flags: Box<dyn Fn() -> String>,
+    pub get_v8_flags: Box<dyn Fn() -> String + 'static>,
 }
 
 /// The trait which is only implemented for a successfully initialised
@@ -70,10 +70,16 @@ pub trait BackendCtxInterfaceUninitialised {
     /// Returns the name of the backend.
     fn get_name(&self) -> &'static str;
 
+    /// This callback will be called on loading phase to allow
+    /// the backend to perform minimal operation that must be done
+    /// on loading phase. The backend should only perform the minimal
+    /// needed operation and should avoid any resources allocation
+    /// like thread or network.
+    fn on_load(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError>;
+
     /// Initialises the backend with the information passed and returns
     /// a successfully initialised instance.
     fn initialize(
         self: Box<Self>,
-        backend_ctx_info: BackendCtx,
     ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError>;
 }

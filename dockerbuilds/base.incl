@@ -15,7 +15,7 @@ ARG archsuffix="Linux-amzn${OS_VERSION}-${PLATFORM}"
 ARG archsuffix="Linux-rhel${OS_VERSION}-${PLATFORM}"
 {% endif %}
 
-FROM ${OS_FAMILY}:${OS_VERSION}
+FROM ${OS_FAMILY}:${OS_VERSION} as builder
 
 ARG REDIS_VERSION
 ARG OS_VERSION

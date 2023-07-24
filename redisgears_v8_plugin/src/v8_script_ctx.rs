@@ -305,7 +305,7 @@ impl V8ScriptCtx {
     }
 
     /// Return [`true`] if the given promise was already resolved or rejected, otherwise false.
-    fn is_reject_or_fulfilled(&self, promise: &V8LocalPromise) -> bool {
+    pub(crate) fn is_reject_or_fulfilled(&self, promise: &V8LocalPromise) -> bool {
         promise.state() == V8PromiseState::Fulfilled || promise.state() == V8PromiseState::Rejected
     }
 

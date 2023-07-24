@@ -566,3 +566,11 @@ redis.registerClusterFunction("test.test", async (client) => {
 });
     '''
     env.expect('TFUNCTION', 'LOAD', code).error().contains('Unallowed cluster function name \'test.test\'')
+
+
+@gearsTest()
+def testWasmIsNotExposeByDefault(env):
+    code = '''#!js api_version=1.0 name=foo
+WebAssembly.Global
+    '''
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('WebAssembly is not defined')
