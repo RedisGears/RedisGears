@@ -1130,7 +1130,7 @@ fn build_per_library_info(ctx: &InfoContext) -> RedisResult<()> {
             }
         }
 
-        dictionaries.insert(library.0.to_owned(), library_info);
+        dictionaries.insert(sha256::digest(library.0), library_info);
     }
 
     let section_builder =
