@@ -44,9 +44,9 @@ impl CompiledLibraryInternals {
     fn add_job(internals: &Arc<CompiledLibraryInternals>, job: Box<dyn FnOnce() + Send>) {
         let pending_jobs = {
             let mut queue = internals.mutex.lock().unwrap();
-            let pending_jons = queue.len();
+            let pending_jobs = queue.len();
             queue.push_front(job);
-            pending_jons
+            pending_jobs
         };
         if pending_jobs == 0 {
             let internals_ref = Arc::clone(internals);

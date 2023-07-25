@@ -14,8 +14,10 @@ pub trait NotificationRunCtxInterface {
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface>;
 }
 
+type NotificationPostJobFn = dyn FnOnce(&dyn NotificationRunCtxInterface);
+
 pub trait NotificationPostJobCtxInterface {
-    fn add_post_notification_job(&self, job: Box<dyn FnOnce(&dyn NotificationRunCtxInterface)>);
+    fn add_post_notification_job(&self, job: Box<NotificationPostJobFn>);
 }
 
 pub trait NotificationCtxInterface:
