@@ -4,6 +4,8 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use std::collections::HashMap;
+
 use crate::redisgears_plugin_api::function_ctx::FunctionCtxInterface;
 use crate::redisgears_plugin_api::keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface;
 use crate::redisgears_plugin_api::run_function_ctx::BackgroundRunFunctionCtxInterface;
@@ -20,11 +22,32 @@ pub const FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE: &str = "allow-oom";
 pub const FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_NAME: &str = "RAW_ARGUMENTS";
 pub const FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE: &str = "raw-arguments";
 
+/// The type of information we can get from a backend that is useful to
+/// a user.
+#[derive(Debug, Clone)]
+pub enum InfoSectionData {
+    /// Simple key-value pairs.
+    KeyValuePairs(HashMap<String, String>),
+    /// Dictionaries have a name, and then under the name they have
+    /// key-value pairs.
+    Dictionaries(HashMap<String, HashMap<String, String>>),
+}
+
+/// The backend information split into sections.
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct ModuleInfo {
+    /// A section always has a name and a set of values.
+    pub sections: HashMap<String, InfoSectionData>,
+}
+
 pub trait LibraryCtxInterface {
     fn load_library(
         &self,
         load_library_ctx: &dyn LoadLibraryCtxInterface,
     ) -> Result<(), GearsApiError>;
+
+    fn get_info(&self) -> Option<ModuleInfo>;
 }
 
 pub enum RegisteredKeys<'a> {

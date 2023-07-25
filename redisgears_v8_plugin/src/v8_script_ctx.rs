@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{InfoSectionData, ModuleInfo};
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::CompiledLibraryInterface, load_library_ctx::LibraryCtxInterface,
     load_library_ctx::LoadLibraryCtxInterface, GearsApiError,
@@ -23,6 +24,7 @@ use v8_rs::v8::{
 
 use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -215,7 +217,7 @@ impl V8ScriptCtx {
         if gil_status.is_locked() {
             self.after_lock_gil();
         }
-        let res = func.call(&ctx_scope, args);
+        let res = func.call(ctx_scope, args);
         if gil_status.is_locked() {
             self.before_release_gil();
         }
@@ -237,7 +239,7 @@ impl V8ScriptCtx {
         if gil_statuc.is_locked() {
             self.after_lock_gil();
         }
-        let res = script.run(&ctx_scope);
+        let res = script.run(ctx_scope);
         if gil_statuc.is_locked() {
             self.before_release_gil();
         }
@@ -277,30 +279,29 @@ impl V8ScriptCtx {
     fn run_on_done_promise<
         'isolate_scope,
         'isolate,
-        'ctx_scope,
         T,
         Done: FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
     >(
         &self,
         isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
-        ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+        ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
         promise: &V8LocalPromise<'isolate_scope, 'isolate>,
         on_done: Done,
     ) -> T {
         let res = promise.get_result();
         if promise.state() == V8PromiseState::Fulfilled {
-            return on_done(Ok(OnDoneCtx {
+            on_done(Ok(OnDoneCtx {
                 isolate_scope,
                 ctx_scope,
                 res,
-            }));
+            }))
         } else {
-            let error = get_error_from_object(&res, &ctx_scope);
+            let error = get_error_from_object(&res, ctx_scope);
             // v callback gets an error object and it can not assume the V8 is locked so there is no
             // reason not to release the isolate lock and this will also help to avoid deadlocks with
             // the Redis GIL.
             let _unlocker = isolate_scope.new_unlocker();
-            return on_done(Err(error));
+            on_done(Err(error))
         }
     }
 
@@ -318,13 +319,12 @@ impl V8ScriptCtx {
     pub(crate) fn promise_rejected_or_fulfilled<
         'isolate_scope,
         'isolate,
-        'ctx_scope,
         T,
         Done: FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
     >(
         &self,
         isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
-        ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+        ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
         promise: &V8LocalPromise<'isolate_scope, 'isolate>,
         on_done: Done,
     ) -> Option<T> {
@@ -342,12 +342,11 @@ impl V8ScriptCtx {
     pub(crate) fn promise_rejected_or_fulfilled_async<
         'isolate_scope,
         'isolate,
-        'ctx_scope,
         T,
         Done: 'static + FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
     >(
         &self,
-        ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+        ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
         promise: &V8LocalPromise<'isolate_scope, 'isolate>,
         on_done: Done,
     ) {
@@ -357,36 +356,36 @@ impl V8ScriptCtx {
         let resolve = ctx_scope.new_native_function(new_native_function!(
             move |isolate_scope, ctx_scope, res: V8LocalValue| {
                 let mut on_done = on_done_resolve.borrow_mut();
-                on_done.take().map(|v| {
+                if let Some(v) = on_done.take() {
                     v(Ok(OnDoneCtx {
                         isolate_scope,
                         ctx_scope,
                         res,
                     }));
-                });
+                }
                 Ok::<_, String>(None)
             }
         ));
         let reject = ctx_scope.new_native_function(new_native_function!(
             move |isolate_scope, ctx_scope, res: V8LocalValue| {
                 let mut on_done = on_done_reject.borrow_mut();
-                on_done.take().map(|v| {
+                if let Some(v) = on_done.take() {
                     let res = Err(get_error_from_object(&res, ctx_scope));
                     // v callback gets an error object and it can not assume the V8 is locked so there is no
                     // reason not to release the isolate lock  and this will also help to avoid deadlocks with
                     // the Redis GIL.
                     let _unlocker = isolate_scope.new_unlocker();
                     v(res);
-                });
+                };
                 Ok::<_, String>(None)
             }
         ));
-        promise.then(&ctx_scope, &resolve, &reject);
+        promise.then(ctx_scope, &resolve, &reject);
         promise.to_value().on_dropped(move || {
             let mut on_done = on_done_dropped.borrow_mut();
-            on_done.take().map(|v| {
+            if let Some(v) = on_done.take() {
                 v(Err(GearsApiError::new("Promise was dropped without been resolved. Usually happened because of timeout or OOM.")));
-            });
+            };
         });
     }
 
@@ -399,13 +398,12 @@ impl V8ScriptCtx {
     pub(crate) fn handle_promise<
         'isolate_scope,
         'isolate,
-        'ctx_scope,
         T,
         Done: 'static + FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
     >(
         &self,
         isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
-        ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+        ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
         promise: &V8LocalPromise<'isolate_scope, 'isolate>,
         on_done: Done,
     ) -> Option<T> {
@@ -452,5 +450,33 @@ impl LibraryCtxInterface for V8LibraryCtx {
             }
         }
         Ok(())
+    }
+
+    fn get_info(&self) -> Option<ModuleInfo> {
+        let sections = {
+            let libraries_stats = {
+                let mut isolate_stats_data = HashMap::new();
+
+                isolate_stats_data.insert(
+                    "total_heap_size".to_owned(),
+                    self.script_ctx.isolate.total_heap_size().to_string(),
+                );
+                isolate_stats_data.insert(
+                    "used_heap_size".to_owned(),
+                    self.script_ctx.isolate.used_heap_size().to_string(),
+                );
+                isolate_stats_data.insert(
+                    "heap_size_limit".to_owned(),
+                    self.script_ctx.isolate.heap_size_limit().to_string(),
+                );
+
+                InfoSectionData::KeyValuePairs(isolate_stats_data)
+            };
+
+            let mut sections = HashMap::new();
+            sections.insert("V8PerLibraryStatistics".to_owned(), libraries_stats);
+            sections
+        };
+        Some(ModuleInfo { sections })
     }
 }
