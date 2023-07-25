@@ -955,24 +955,28 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
                     return;
                 }
                 let stream_name = ctx.create_string(key_name);
-                let key = ctx.open_key_writable(&stream_name);
-                let res = key.trim_stream_by_id(id, false);
-                if let Err(e) = res {
-                    ctx.log_debug(&format!(
-                        "Error occured when trimming stream (stream was probably deleted): {}",
-                        e
-                    ))
-                } else {
-                    redis_module::replicate(
-                        ctx.ctx,
-                        "xtrim",
-                        &[
-                            key_name,
-                            "MINID".as_bytes(),
-                            format!("{}-{}", id.ms, id.seq).as_bytes(),
-                        ],
-                    );
-                }
+                // We need to run inside a post execution job to make sure the trim
+                // will happened last and will be replicated to the replica last.
+                ctx.add_post_notification_job(move |ctx| {
+                    let key = ctx.open_key_writable(&stream_name);
+                    let res = key.trim_stream_by_id(id, false);
+                    if let Err(e) = res {
+                        ctx.log_debug(&format!(
+                            "Error occured when trimming stream (stream was probably deleted): {}",
+                            e
+                        ))
+                    } else {
+                        redis_module::replicate(
+                            ctx.ctx,
+                            "xtrim",
+                            &[
+                                stream_name.as_slice(),
+                                "MINID".as_bytes(),
+                                format!("{}-{}", id.ms, id.seq).as_bytes(),
+                            ],
+                        );
+                    }
+                });
             }),
         ),
         notifications_ctx: KeysNotificationsCtx::new(),
