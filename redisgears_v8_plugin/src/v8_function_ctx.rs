@@ -86,7 +86,7 @@ fn v8_value_to_call_result(
                 } else if reply_type_v8_str.as_str() == "verbatim" {
                     let format = obj_reply
                         .get_str_field(ctx_scope, "__format")
-                        .map_or(None, |v| v.to_utf8());
+                        .and_then(|v| v.to_utf8());
                     return Ok(RedisValue::VerbatimString((
                         format
                             .as_ref()
@@ -111,7 +111,7 @@ fn v8_value_to_call_result(
         let arr: V8LocalArray = val.as_set().into();
         let res: Result<HashSet<RedisValueKey>, RedisError> = arr
             .iter(ctx_scope)
-            .map(|v| v8_value_to_redis_value_key(v))
+            .map(v8_value_to_redis_value_key)
             .collect();
         RedisValue::Set(res?)
     } else if val.is_array() {

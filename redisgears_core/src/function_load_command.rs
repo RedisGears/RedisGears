@@ -47,7 +47,7 @@ fn library_extract_metadata(
     let prologue = redisgears_plugin_api::redisgears_plugin_api::prologue::parse_prologue(code)
         .map_err(|e| RedisError::String(GearsApiError::from(e).get_msg().to_owned()))?;
 
-    verify_name(&prologue.library_name).map_err(|e| {
+    verify_name(prologue.library_name).map_err(|e| {
         RedisError::String(format!(
             "Unallowed library name '{}', {e}.",
             prologue.library_name
@@ -158,7 +158,7 @@ pub(crate) fn function_load_internal(
         gears_library.meta_data.name.to_string(),
         Arc::new(GearsLibrary {
             gears_lib_ctx: gears_library,
-            _lib_ctx: lib_ctx,
+            lib_ctx,
             compile_lib_internals,
         }),
     );
