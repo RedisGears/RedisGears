@@ -18,8 +18,7 @@ use v8_rs::v8::v8_array::V8LocalArray;
 use v8_rs::v8::{
     isolate_scope::V8IsolateScope, v8_array_buffer::V8LocalArrayBuffer,
     v8_context_scope::V8ContextScope, v8_native_function_template::V8LocalNativeFunctionArgsIter,
-    v8_object::V8LocalObject, v8_utf8::V8LocalUtf8,
-    v8_value::V8LocalValue, v8_version,
+    v8_object::V8LocalObject, v8_utf8::V8LocalUtf8, v8_value::V8LocalValue, v8_version,
 };
 
 use v8_derive::{new_native_function, NativeFunctionArgument};
@@ -29,7 +28,7 @@ use crate::v8_redisai::{get_redisai_api, get_redisai_client};
 use crate::v8_backend::log_warning;
 use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
-use crate::v8_script_ctx::{V8ScriptCtx, GilStatus};
+use crate::v8_script_ctx::{GilStatus, V8ScriptCtx};
 use crate::v8_stream_ctx::V8StreamCtx;
 use crate::{
     get_exception_msg, get_exception_v8_value, get_function_flags_from_strings,
@@ -568,7 +567,7 @@ fn add_call_function(
                             Ok(res) => script_ctx_ref.resolve(&resolver, &ctx_scope, &res),
                             Err(e) => script_ctx_ref.reject(&resolver, &ctx_scope, &isolate_scope.new_string(&e).to_value())
                         }
-                        
+
                     };
                     match res {
                         PromiseReply::Resolved(res) => {
@@ -730,7 +729,12 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
                         &ctx_scope,
                         Arc::new(bg_redis_client),
                     );
-                    let res = new_script_ctx_ref.call(&f.take_local(&isolate_scope), &ctx_scope, Some(&[&background_client.to_value()]), GilStatus::Unlocked);
+                    let res = new_script_ctx_ref.call(
+                        &f.take_local(&isolate_scope),
+                        &ctx_scope,
+                        Some(&[&background_client.to_value()]),
+                        GilStatus::Unlocked,
+                    );
 
                     let resolver = resolver.take_local(&isolate_scope).as_resolver();
                     match res {
@@ -1073,7 +1077,7 @@ fn add_register_function_api(
                             })
                         })?;
 
-                let description = optional_args.map_or(None, |v| v.description);
+                let description = optional_args.and_then(|v| v.description);
 
                 let load_ctx =
                     curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
@@ -1162,7 +1166,7 @@ fn add_stream_trigger_api(
             return Err("window argument must be a positive number".into());
         }
         let trim = optional_args.as_ref().map_or(false, |v| v.isStreamTrimmed.as_ref().map_or(false, |v| *v));
-        let description = optional_args.map_or(None, |v| v.description);
+        let description = optional_args.and_then(|v| v.description);
 
         let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
         let res = if prefix.is_string() {
@@ -1216,7 +1220,7 @@ fn add_register_notification_consumer_api(
             })
         })?;
 
-        let description = optional_args.map_or(None, |v| v.description);
+        let description = optional_args.and_then(|v| v.description);
 
         let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0).ok_or_else(|| format!("Called '{REGISTER_NOTIFICATIONS_CONSUMER}' out of context"))?;
 
@@ -1474,7 +1478,9 @@ pub(crate) fn initialize_globals_1_0(
                         let script_ctx_ref_resolve = match script_ctx_ref_resolve.upgrade() {
                             Some(s) => s,
                             None => {
-                                resolver_resolve.ref_cell.borrow_mut().take().map(|mut v| v.forget());
+                                if let Some(mut v) = resolver_resolve.ref_cell.borrow_mut().take() {
+                                    v.forget();
+                                }
                                 return Err("Library was deleted");
                             }
                         };
@@ -1489,7 +1495,11 @@ pub(crate) fn initialize_globals_1_0(
                                     match new_script_ctx_ref_resolve.upgrade() {
                                         Some(s) => s,
                                         None => {
-                                            resolver_resolve.ref_cell.borrow_mut().take().map(|mut v| v.forget());
+                                            if let Some(mut v) =
+                                                resolver_resolve.ref_cell.borrow_mut().take()
+                                            {
+                                                v.forget();
+                                            }
                                             res.forget();
                                             log_warning(
                                             "Library was delete while not all the jobs were done",
@@ -1502,12 +1512,10 @@ pub(crate) fn initialize_globals_1_0(
                                     new_script_ctx_ref_resolve.ctx.enter(&isolate_scope);
                                 let _trycatch = isolate_scope.new_try_catch();
                                 let res = res.take_local(&isolate_scope);
-                                resolver_resolve
-                                    .ref_cell
-                                    .borrow_mut().take().map(|mut v| {
-                                        let resolver = v.take_local(&isolate_scope).as_resolver();
-                                        new_script_ctx_ref_resolve.resolve(&resolver, &ctx_scope, &res);
-                                    });
+                                if let Some(mut v) = resolver_resolve.ref_cell.borrow_mut().take() {
+                                    let resolver = v.take_local(&isolate_scope).as_resolver();
+                                    new_script_ctx_ref_resolve.resolve(&resolver, &ctx_scope, &res);
+                                };
                             }));
                         Ok(None)
                     }
@@ -1518,7 +1526,9 @@ pub(crate) fn initialize_globals_1_0(
                         let script_ctx_ref_reject = match script_ctx_ref_reject.upgrade() {
                             Some(s) => s,
                             None => {
-                                resolver_reject.ref_cell.borrow_mut().take().map(|mut v| v.forget());
+                                if let Some(mut v) = resolver_reject.ref_cell.borrow_mut().take() {
+                                    v.forget();
+                                }
                                 return Err("Library was deleted");
                             }
                         };
@@ -1534,7 +1544,11 @@ pub(crate) fn initialize_globals_1_0(
                                         Some(s) => s,
                                         None => {
                                             res.forget();
-                                            resolver_reject.ref_cell.borrow_mut().take().map(|mut v| v.forget());
+                                            if let Some(mut v) =
+                                                resolver_reject.ref_cell.borrow_mut().take()
+                                            {
+                                                v.forget();
+                                            }
                                             log_warning(
                                             "Library was delete while not all the jobs were done",
                                         );
@@ -1545,12 +1559,10 @@ pub(crate) fn initialize_globals_1_0(
                                 let ctx_scope = new_script_ctx_ref_reject.ctx.enter(&isolate_scope);
                                 let _trycatch = isolate_scope.new_try_catch();
                                 let res = res.take_local(&isolate_scope);
-                                resolver_reject
-                                    .ref_cell
-                                    .borrow_mut().take().map(|mut v|{
-                                        let resolver = v.take_local(&isolate_scope).as_resolver();
-                                        new_script_ctx_ref_reject.reject(&resolver, &ctx_scope, &res);
-                                    });
+                                if let Some(mut v) = resolver_reject.ref_cell.borrow_mut().take() {
+                                    let resolver = v.take_local(&isolate_scope).as_resolver();
+                                    new_script_ctx_ref_reject.reject(&resolver, &ctx_scope, &res);
+                                };
                             }));
                         Ok(None)
                     }

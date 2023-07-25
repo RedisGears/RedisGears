@@ -9,6 +9,7 @@ use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
 use redisgears_macros_internals::get_allow_deny_lists;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{InfoSectionData, ModuleInfo};
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
@@ -309,7 +310,7 @@ pub(crate) fn bypass_memory_limit() -> bool {
         return true;
     }
     unsafe { GLOBAL.bypassed_memory_limit.as_ref().unwrap() }.store(false, Ordering::Relaxed);
-    return false;
+    false
 }
 
 pub(crate) struct V8Backend {
@@ -367,10 +368,12 @@ fn check_isolates_memory_limit(
         if !detected_memory_pressure {
             log_warning("Detects OOM state on the JS engine, will send memory pressure notification to all libraries.");
         }
-        script_ctx_vec.lock().unwrap().iter().for_each(|v| {
-            v.upgrade()
-                .map(|v| v.isolate.memory_pressure_notification());
-        });
+        script_ctx_vec
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.upgrade())
+            .for_each(|v| v.isolate.memory_pressure_notification());
         true
     } else {
         if detected_memory_pressure {
@@ -465,7 +468,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
         }));
 
         let flags = get_v8_flags();
-        let flags = if flags.starts_with("'") && flags.len() > 1 {
+        let flags = if flags.starts_with('\'') && flags.len() > 1 {
             &flags[1..flags.len() - 1]
         } else {
             &flags
@@ -592,7 +595,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
                         let msg = format!("{msg}, library={}, used_heap_size={}, total_heap_size={}", script_ctx.name, script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
                         let memory_delta = memory_delta();
-                        let new_isolate_limit = (usize::max(script_ctx.isolate.total_heap_size(), curr_limit) + memory_delta) as usize;
+                        let new_isolate_limit = usize::max(script_ctx.isolate.total_heap_size(), curr_limit) + memory_delta;
 
                         if calc_isolates_used_memory() + memory_delta >= max_memory_limit() {
                             unsafe { GLOBAL.bypassed_memory_limit.as_ref().unwrap() }.store(true, Ordering::Relaxed);
@@ -738,5 +741,51 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 "Unknown subcommand '{sub_command}'",
             ))),
         }
+    }
+
+    fn get_info(&mut self) -> Option<ModuleInfo> {
+        let sections = {
+            let aggregated_libraries_stats = InfoSectionData::KeyValuePairs({
+                let (active, not_active) = {
+                    let l = self.script_ctx_vec.lock().unwrap();
+                    let active = l.iter().filter(|v| v.strong_count() > 0).count() as i64;
+                    let not_active = l.iter().filter(|v| v.strong_count() == 0).count() as i64;
+                    (active, not_active)
+                };
+
+                let mut data = HashMap::new();
+                data.insert("active".to_owned(), active.to_string());
+                data.insert("not_active".to_owned(), not_active.to_string());
+                data.insert(
+                    "combined_memory_limit".to_owned(),
+                    calc_isolates_used_memory().to_string(),
+                );
+
+                {
+                    let l = self.script_ctx_vec.lock().unwrap();
+                    let (total_heap_size, used_heap_size) = l
+                        .iter()
+                        .filter_map(|v| v.upgrade())
+                        .fold((0, 0), |mut acc, v| {
+                            acc.0 += v.isolate.total_heap_size();
+                            acc.1 += v.isolate.used_heap_size();
+                            acc
+                        });
+
+                    data.insert("total_heap_size".to_owned(), total_heap_size.to_string());
+                    data.insert("used_heap_size".to_owned(), used_heap_size.to_string());
+                }
+
+                data
+            });
+
+            let mut sections = HashMap::new();
+            sections.insert(
+                "V8AggregatedLibraryStatistics".to_owned(),
+                aggregated_libraries_stats,
+            );
+            sections
+        };
+        Some(ModuleInfo { sections })
     }
 }

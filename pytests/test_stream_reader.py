@@ -94,6 +94,28 @@ redis.registerStreamTrigger("consumer", "stream",
     env.expect('xlen', 'stream:1').equal(0)
     env.expectTfcall('lib', 'num_events').equal(2)
 
+@gearsTest(withReplicas=True)
+def testSyncStreamTrimWithReplica(env):
+    """#!js api_version=1.0 name=lib
+redis.registerStreamTrigger("consumer", "stream", 
+    function(){
+        return;
+    },
+    {
+        isStreamTrimmed: true
+    }
+);
+    """
+    slave_conn = env.getSlaveConnection()
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    env.expect('xlen', 'stream:1').equal(0)
+    env.expect('WAIT', '1', '1000').equal(1)
+    env.assertEqual(slave_conn.execute_command('xlen', 'stream:1'), 0)
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    env.expect('xlen', 'stream:1').equal(0)
+    env.expect('WAIT', '1', '1000').equal(1)
+    env.assertEqual(slave_conn.execute_command('xlen', 'stream:1'), 0)
+
 @gearsTest()
 def testStreamProccessError(env):
     """#!js api_version=1.0 name=lib

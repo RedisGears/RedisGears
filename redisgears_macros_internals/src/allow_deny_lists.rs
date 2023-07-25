@@ -17,7 +17,7 @@ struct Args {
 
 impl Parse for Args {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        from_stream(config::JSONY, &input)
+        from_stream(config::JSONY, input)
     }
 }
 

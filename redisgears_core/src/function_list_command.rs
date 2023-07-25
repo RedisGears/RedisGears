@@ -272,23 +272,20 @@ fn get_library_info(
         pending_async_calls: get_globals()
             .future_handlers
             .get(&lib.gears_lib_ctx.meta_data.name)
-            .map_or_else(
-                || Vec::new(),
-                |v| {
-                    v.into_iter()
-                        .filter_map(|v| {
-                            let v = v.upgrade()?;
-                            let v = v.lock(ctx);
-                            let res: Vec<String> = v
-                                .command
-                                .iter()
-                                .map(|v| String::from_utf8_lossy(v.as_slice()).into_owned())
-                                .collect();
-                            Some(res.join(" "))
-                        })
-                        .collect()
-                },
-            ),
+            .map_or_else(Vec::new, |v| {
+                v.iter()
+                    .filter_map(|v| {
+                        let v = v.upgrade()?;
+                        let v = v.lock(ctx);
+                        let res: Vec<String> = v
+                            .command
+                            .iter()
+                            .map(|v| String::from_utf8_lossy(v.as_slice()).into_owned())
+                            .collect();
+                        Some(res.join(" "))
+                    })
+                    .collect()
+            }),
     };
 
     if !with_code {
