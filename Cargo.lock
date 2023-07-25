@@ -975,7 +975,7 @@ dependencies = [
 [[package]]
 name = "redis-module"
 version = "99.99.99"
-source = "git+https://github.com/RedisLabsModules/redismodule-rs?branch=master#96f814ba45a014648884db35e62a0b71de2fe975"
+source = "git+https://github.com/RedisLabsModules/redismodule-rs?branch=master#e791067c6aa83f8bba9822d72e1dd76e2748b392"
 dependencies = [
  "backtrace",
  "bindgen 0.66.1",
@@ -997,7 +997,7 @@ dependencies = [
 [[package]]
 name = "redis-module-macros"
 version = "99.99.99"
-source = "git+https://github.com/RedisLabsModules/redismodule-rs?branch=master#96f814ba45a014648884db35e62a0b71de2fe975"
+source = "git+https://github.com/RedisLabsModules/redismodule-rs?branch=master#e791067c6aa83f8bba9822d72e1dd76e2748b392"
 dependencies = [
  "proc-macro2",
  "quote 1.0.32",
@@ -1009,7 +1009,7 @@ dependencies = [
 [[package]]
 name = "redis-module-macros-internals"
 version = "99.99.99"
-source = "git+https://github.com/RedisLabsModules/redismodule-rs?branch=master#96f814ba45a014648884db35e62a0b71de2fe975"
+source = "git+https://github.com/RedisLabsModules/redismodule-rs?branch=master#e791067c6aa83f8bba9822d72e1dd76e2748b392"
 dependencies = [
  "lazy_static",
  "proc-macro2",
@@ -1042,7 +1042,7 @@ dependencies = [
 
 [[package]]
 name = "redisgears_core"
-version = "2.0.9"
+version = "2.0.10"
 dependencies = [
  "byte-unit",
  "clap",
@@ -1622,7 +1622,7 @@ checksum = "5190c9442dcdaf0ddd50f37420417d219ae5261bbf5db120d0f9bab996c9cba1"
 [[package]]
 name = "v8_rs"
 version = "0.1.0"
-source = "git+https://github.com/RedisGears/v8-rs#f53c5768343a49cc80ad5360aff9ad00d7917214"
+source = "git+https://github.com/RedisGears/v8-rs#0b91835997a919d84d5294294df39d83b7f0f62f"
 dependencies = [
  "bindgen 0.59.2",
  "lazy_static",
@@ -1632,7 +1632,7 @@ dependencies = [
 [[package]]
 name = "v8_rs_derive"
 version = "0.1.0"
-source = "git+https://github.com/RedisGears/v8-rs#f53c5768343a49cc80ad5360aff9ad00d7917214"
+source = "git+https://github.com/RedisGears/v8-rs#0b91835997a919d84d5294294df39d83b7f0f62f"
 dependencies = [
  "quote 1.0.32",
  "syn 1.0.109",
