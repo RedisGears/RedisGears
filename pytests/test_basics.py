@@ -2,6 +2,9 @@ from common import gearsTest
 from common import toDictionary
 from common import runUntil
 from redis import Redis
+import time
+
+MODULE_NAME = "redisgears_2"
 
 '''
 todo:
@@ -193,7 +196,7 @@ redis.registerFunction("async_set_trigger", function(client, key, val){
 @gearsTest(withReplicas=True)
 def testRunOnReplica(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test1", 
+redis.registerFunction("test1",
     function(client){
         return 1;
     });
@@ -346,8 +349,8 @@ redis.registerAsyncFunction("test1", async function(client){
     env.expect('RPUSH', 'l', '1').equal(1)
     runUntil(env, 0, run_v8_gc)
     future.expectError('Promise was dropped without been resolved')
-    
-    
+
+
 
 @gearsTest()
 def testExecuteAsyncScriptTimeout(env):
@@ -358,7 +361,7 @@ redis.registerAsyncFunction("test1", function(client){
             while (true);
         });
     });
-    
+
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
@@ -536,6 +539,72 @@ redis.registerFunction("test1", function(){
     env.expect('debug', 'reload').equal("OK")
     env.expectTfcall('lib', 'test1').equal(['foo', 'bar'])
 
+@gearsTest()
+def testLibraryLoadingTimesout(env):
+    code = """#!js api_version=1.0 name=lib
+redis.registerFunction("test1", function(){
+    return redis.config;
+});
+while (true) {
+    // do nothing
+}
+    """
+    TIMEOUT_EXPECTED_MS = 5000
+
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', TIMEOUT_EXPECTED_MS).equal("OK")
+    loading_start_time = time.time()
+    env.expect('TFUNCTION', 'LOAD', code).equal("Failed loading library: Err Execution was terminated due to OOM or timeout.")
+    loading_end_time = time.time()
+    env.assertTrue(loading_end_time - loading_start_time >= TIMEOUT_EXPECTED_MS / 1000, message="The timeout hasn't happened correctly.")
+    env.expectTfcall('lib', 'test1').equal("Unknown library lib")
+
+@gearsTest()
+def testLibraryLoadingFromRdbTimesout(env):
+    code = """#!js api_version=1.0 name=lib
+redis.registerFunction("test1", function(){
+    return "GOODJOB";
+});
+
+const d = new Date();
+let time = d.getTime();
+
+while (true) {
+    if (new Date().getTime() - time > 1200) {
+        break;
+    }
+}
+    """
+    TIMEOUT_EXPECTED_MS = 1200
+
+    # Initially it fails due to the default lock-redis-timeout of 500ms.
+    env.expect('TFUNCTION', 'LOAD', code).equal("Failed loading library: Err Execution was terminated due to OOM or timeout.")
+
+    # Let's get and store the old timeout value.
+    old_timeout_value = 0
+    def set_old_value(value):
+        nonlocal old_timeout_value
+        old_timeout_value = value
+        return value
+
+    env.expect('CONFIG', 'GET', f'{MODULE_NAME}.lock-redis-timeout').apply(set_old_value)
+
+    # We increase the timeout to the expected value + some value to
+    # allow for some slack.
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', TIMEOUT_EXPECTED_MS).equal("OK")
+    env.expect('TFUNCTION', 'LOAD', code).equal("OK")
+    env.expectTfcall('lib', 'test1').equal("GOODJOB")
+
+    # Now dump to RDB and load from there. This case makes sure the
+    # rdb-lock-redis-timeout is used, by setting it to a minimal
+    # possible value.
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 100).equal("OK")
+    env.expect('debug', 'reload').equal("Error trying to load the RDB dump, check server logs.")
+
+    # Now lets bump the RDB timeout higher, so that it should succeed
+    # and assert that.
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 1500).equal("OK")
+    env.expect('debug', 'reload').equal("OK")
+
 @gearsTest(enableGearsDebugCommands=True)
 def testCallTypeParsing(env):
     """#!js api_version=1.0 name=lib
@@ -612,7 +681,7 @@ redis.registerFunction("debug_protocol", function(client, arg){
     """
     env.expect('TFUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
     conn = env.getResp3Connection()
-    
+
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['string'], c=conn), 'Hello World')
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['integer'], c=conn), 12345)
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['double'], c=conn), 3.141)
@@ -648,7 +717,7 @@ redis.registerFunction("test", function(){
 });
     """
     conn = env.getResp3Connection()
-    
+
     env.assertEqual(conn.execute_command('TFUNCTION', 'LIST'), [\
         {\
          'configuration': None,\
@@ -727,7 +796,7 @@ redis.registerFunction("my_set",
 @gearsTest(decodeResponses=False)
 def testRawArgumentsAsync(env):
     """#!js api_version=1.0 name=lib
-redis.registerAsyncFunction("my_set", 
+redis.registerAsyncFunction("my_set",
     async (c, key, val) => {
         return c.block((c)=>{
             return c.call("set", key, val);
@@ -755,7 +824,7 @@ redis.registerFunction("test", () => {
 @gearsTest(decodeResponses=False)
 def testRawCall(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", 
+redis.registerFunction("test",
     (c, key) => {
         return c.callRaw("get", key)
     },
@@ -770,7 +839,7 @@ redis.registerFunction("test",
 @gearsTest()
 def testSimpleHgetall(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", 
+redis.registerFunction("test",
     (c, key) => {
         return c.call("hgetall", key)
     },
@@ -786,7 +855,7 @@ redis.registerFunction("test",
 @gearsTest(decodeResponses=False)
 def testBinaryFieldsNamesOnHashRaiseError(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", 
+redis.registerFunction("test",
     (c, key) => {
         return c.call("hgetall", key)
     },
@@ -816,7 +885,7 @@ redis.registerFunction("test",
 @gearsTest()
 def testFunctionListWithLibraryOption(env):
     code = """#!js api_version=1.0 name=lib
-redis.registerFunction("test", 
+redis.registerFunction("test",
     (c, key) => {
         return typeof Object.keys(c.callRaw("hgetall", key))[0];
     },
@@ -918,7 +987,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client) => {
 @gearsTest(useAof=True)
 def testFunctionDescription(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", 
+redis.registerFunction("test",
     () => {
         return "foo";
     },
