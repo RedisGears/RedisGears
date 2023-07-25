@@ -140,6 +140,48 @@ fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
     Ok(())
 }
 
+/// A string converted into a sha256 hash-sum. The string is unique
+/// per the source string, due to the hash algorithm used.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[repr(transparent)]
+struct ObfuscatedString(String);
+impl ObfuscatedString {
+    fn new<S: Into<String>>(non_obfuscated: S) -> Self {
+        Self(sha256::digest(non_obfuscated.into()))
+    }
+}
+impl std::ops::Deref for ObfuscatedString {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for ObfuscatedString {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T: AsRef<str>> From<T> for ObfuscatedString {
+    fn from(value: T) -> Self {
+        Self::new(value.as_ref())
+    }
+}
+
+trait ObfuscateString {
+    fn obfuscate(&self) -> ObfuscatedString;
+}
+
+impl<T> ObfuscateString for T
+where
+    T: AsRef<str>,
+{
+    fn obfuscate(&self) -> ObfuscatedString {
+        self.into()
+    }
+}
+
 /// The meta information about the gears library instance at runtime.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GearsLibraryMetaData {
@@ -1130,7 +1172,7 @@ fn build_per_library_info(ctx: &InfoContext) -> RedisResult<()> {
             }
         }
 
-        dictionaries.insert(sha256::digest(library.0), library_info);
+        dictionaries.insert(library.0.obfuscate(), library_info);
     }
 
     let section_builder =
