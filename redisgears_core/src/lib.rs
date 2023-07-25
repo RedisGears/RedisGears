@@ -954,7 +954,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
                     ctx.log_warning("Attempt to trim data on replica was denied.");
                     return;
                 }
-                let stream_name = ctx.create_string(key_name);
+                let stream_name = RedisString::create(None, key_name);
                 // We need to run inside a post execution job to make sure the trim
                 // will happened last and will be replicated to the replica last.
                 ctx.add_post_notification_job(move |ctx| {
