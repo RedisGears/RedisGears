@@ -203,6 +203,16 @@ pub(crate) fn get_fatal_failure_policy() -> LibraryFatalFailurePolicy {
     LibraryFatalFailurePolicy::Abort
 }
 
+/// Return the timeout for a script being loaded from an RDB.
+pub(crate) fn gil_rdb_lock_timeout() -> u128 {
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().get_rdb_lock_timeout)()
+    }
+    #[cfg(test)]
+    0u128
+}
+
 /// Return the timeout for which a library is allowed to
 /// take the Redis GIL. Once this timeout reached it is
 /// considered a fatal failure.
@@ -339,7 +349,11 @@ fn scan_for_isolates_timeout(script_ctx_vec: &ScriptCtxVec) {
                     // gil is current locked. we should check for timeout.
                     // todo: call Redis back to reply to pings and some other commands.
                     let gil_lock_duration = script_ctx.gil_lock_duration_ms();
-                    let gil_lock_configured_timeout = gil_lock_timeout();
+                    let gil_lock_configured_timeout = if script_ctx.is_being_loaded_from_rdb() {
+                        gil_rdb_lock_timeout()
+                    } else {
+                        gil_lock_timeout()
+                    };
                     if gil_lock_duration > gil_lock_configured_timeout {
                         script_ctx.set_lock_timedout();
                         script_ctx.compiled_library_api.log_warning(&format!("Script locks Redis for about {}ms which is more then the configured timeout {}ms.", gil_lock_duration, gil_lock_configured_timeout));
@@ -562,6 +576,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 tensor_obj_template,
                 compiled_library_api,
             ));
+
             let len = {
                 let mut l = self.script_ctx_vec.lock().unwrap();
                 l.push(Arc::downgrade(&script_ctx));
