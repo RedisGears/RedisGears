@@ -96,6 +96,27 @@ impl GilStatus {
     }
 }
 
+/// A struct, objects of which hold a reference to the parent
+/// [`V8ScriptCtx`], which is designated as the one being loaded from
+/// RDB at the time the object of this struct is alive.
+#[repr(transparent)]
+struct RdbLoadingGuard<'a>(&'a V8ScriptCtx);
+impl<'a> RdbLoadingGuard<'a> {
+    fn new(is_loading_rdb: bool, script_ctx: &'a V8ScriptCtx) -> Self {
+        script_ctx
+            .is_being_loaded_from_rdb
+            .store(is_loading_rdb, Ordering::SeqCst);
+        Self(script_ctx)
+    }
+}
+impl<'a> Drop for RdbLoadingGuard<'a> {
+    fn drop(&mut self) {
+        self.0
+            .is_being_loaded_from_rdb
+            .store(false, Ordering::Release);
+    }
+}
+
 pub(crate) struct V8ScriptCtx {
     /// The name of the library.
     pub(crate) name: String,
@@ -163,6 +184,12 @@ impl V8ScriptCtx {
     /// an RDB.
     pub(crate) fn is_being_loaded_from_rdb(&self) -> bool {
         self.is_being_loaded_from_rdb.load(Ordering::Relaxed)
+    }
+
+    /// Marks the [`Self`] as being (or not) loaded from RDB, returning
+    /// a guard object, which will remove the mark upon destruction.
+    fn mark_loading_rdb(&self, is_loading_rdb: bool) -> RdbLoadingGuard<'_> {
+        RdbLoadingGuard::new(is_loading_rdb, self)
     }
 
     /// Perform necessary operation before running JS code.
@@ -441,9 +468,7 @@ impl LibraryCtxInterface for V8LibraryCtx {
 
         let script = self.script_ctx.script.to_local(&isolate_scope);
 
-        self.script_ctx
-            .is_being_loaded_from_rdb
-            .store(is_being_loaded_from_rdb, Ordering::SeqCst);
+        let _rdb_loading_guard = self.script_ctx.mark_loading_rdb(is_being_loaded_from_rdb);
 
         // set private content
         let _load_library_guard = self.script_ctx.ctx.set_private_data(0, &load_library_ctx);
@@ -464,10 +489,6 @@ impl LibraryCtxInterface for V8LibraryCtx {
                 )));
             }
         }
-
-        self.script_ctx
-            .is_being_loaded_from_rdb
-            .store(false, Ordering::Release);
 
         Ok(())
     }
