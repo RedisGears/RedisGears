@@ -64,3 +64,6 @@ TFCALLASYNC
 functionFlags
 blpop
 lpop
+keyspace
+Keyspace
+KeySpace

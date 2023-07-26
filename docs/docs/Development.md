@@ -1,12 +1,18 @@
-# JS API
+---
+title: "Development"
+linkTitle: "Development"
+weight: 3
+description: >
+  How to develop Triggers and Functions
+---
 
-The following [directory](../redisgears_js_api) contains a node project that defined the entire API provided by RedisGears, it uses `.d.ts` files for auto complete and typing. You can install it using the following command:
+To aid in the development of new libraries of Triggers and Functions you can use the type declaration files for the Triggers and Functions API. This can be used by your preferred development environment to provide autocompletion and type checking based on the type information. You can install it using the following command:
 
 ```bash
 npm install https://gitpkg.now.sh/RedisGears/RedisGears/redisgears_js_api
 ```
 
-Or just add it as a dependency to you `package.json` file:
+Or add it directly as a dependency to your `package.json`:
 
 ```json
 "devDependencies": {
@@ -14,17 +20,17 @@ Or just add it as a dependency to you `package.json` file:
 }
 ```
 
-## Full example:
+## Example project setup
 
-Create an empty directory, `redisgears_project`. Inside the directory run the following command:
+Create an empty directory for your new Triggers and Functions project, `my_first_project`. Navigate to the folder and run the following command:
 
 ```bash
-> npm init -y -f
+npm init -y -f
 npm WARN using --force Recommended protections disabled.
-Wrote to /home/meir/work/RedisGearsJSSDK/gears_project_2/package.json:
+Wrote to /home/work/my_first_project/package.json:
 
 {
-  "name": "gears_project_2",
+  "name": "my_first_project",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -37,16 +43,16 @@ Wrote to /home/meir/work/RedisGearsJSSDK/gears_project_2/package.json:
 }
 ```
 
-If all went well, you should see a `package.json` file, where you need to add the following content:
+Update the the `package.json` to add the devDependency to the gears API.
 
 ```js
 {
-  "name": "gears_project",
+  "name": "my_first_project",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "deploy": "gears-api index.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {
     "@redis/gears-api": "https://gitpkg.now.sh/RedisGears/RedisGears/js_api"
@@ -59,9 +65,9 @@ If all went well, you should see a `package.json` file, where you need to add th
 
 Install the dependencies using `npm install`.
 
-Create a new file, `index.js` and add the following content to it:
+Create a new file, `index.js` and import the gears-api module. This will enable code intellisense when adding the `registerFunction`:
 
-```js
+```JavaScript
 #!js name=lib api_version=1.0
 
 import { redis } from '@redis/gears-api';
@@ -69,6 +75,14 @@ import { redis } from '@redis/gears-api';
 redis.registerFunction("test", ()=>{
     return "test";
 });
+```
+
+To automate the deployment, update the `scripts` section in `pacakage.json`:
+
+```json
+"scripts": {
+  "deploy": "gears-api index.js"
+}
 ```
 
 Now you can deploy your code to RedisGears using the following command:
@@ -84,7 +98,7 @@ Deployed! :)
 
 The provided URL should follow the following format: `<redis[s]://[[username][:password]@][host][:port][/db-number]>`
 
-If all went well you can now run your RedisGears function:
+You can now run your RedisGears function:
 
 ```bash
 127.0.0.1:6379> TFCALL lib.test 0
