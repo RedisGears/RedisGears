@@ -549,7 +549,7 @@ while (true) {
     // do nothing
 }
     """
-    TIMEOUT_EXPECTED_MS = 5000
+    TIMEOUT_EXPECTED_MS = 2000
 
     env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', TIMEOUT_EXPECTED_MS).equal("OK")
     loading_start_time = time.time()
@@ -569,7 +569,7 @@ const d = new Date();
 let time = d.getTime();
 
 while (true) {
-    if (new Date().getTime() - time > 1200) {
+    if (new Date().getTime() - time > 1000) {
         break;
     }
 }
