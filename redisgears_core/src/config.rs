@@ -18,7 +18,7 @@ enum_configuration! {
     }
 }
 
-macro_rules! gen_lock_timeout {
+macro_rules! generate_lock_timeout_struct {
     ($vis:vis $name:ident) => {
         /// A transparent structure to have a lock timeout value with custom
         /// setters and getters.
@@ -40,7 +40,8 @@ macro_rules! gen_lock_timeout {
     };
 }
 
-gen_lock_timeout!(pub RdbLockTimeout);
+generate_lock_timeout_struct!(pub RdbLockTimeout);
+generate_lock_timeout_struct!(pub LoadLockTimeout);
 
 impl redis_module::ConfigurationValue<i64> for RdbLockTimeout {
     fn get(&self, _: &redis_module::configuration::ConfigurationContext) -> i64 {
@@ -62,6 +63,29 @@ impl redis_module::ConfigurationValue<i64> for RdbLockTimeout {
     }
 }
 
+impl redis_module::ConfigurationValue<i64> for LoadLockTimeout {
+    fn get(&self, _: &redis_module::configuration::ConfigurationContext) -> i64 {
+        self.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn set(
+        &self,
+        _: &redis_module::configuration::ConfigurationContext,
+        val: i64,
+    ) -> Result<(), redis_module::RedisError> {
+        self.store(val, std::sync::atomic::Ordering::SeqCst);
+        // The RDB lock redis timeout value shouldn't be less than the
+        // lock-redis-timeout value, as it wouldn't make sense then.
+        // Hence we are updating it here too as well.
+        let current_rdb = RDB_LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed);
+        RDB_LOCK_REDIS_TIMEOUT.store(
+            std::cmp::max(val, current_rdb),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        Ok(())
+    }
+}
+
 lazy_static! {
     /// Configuration value indicates how verbose the error messages will be give
     /// to the user. Value 1 means simple one line error message. Value of 2
@@ -77,7 +101,7 @@ lazy_static! {
 
     /// Configuration value indicates the timeout for locking Redis (except
     /// for the loading from RDB. For that, see the [`RDB_LOCK_REDIS_TIMEOUT`]).
-    pub(crate) static ref LOCK_REDIS_TIMEOUT: AtomicI64 = AtomicI64::default();
+    pub(crate) static ref LOCK_REDIS_TIMEOUT: LoadLockTimeout = LoadLockTimeout::default();
 
     /// Configuration value indicates the timeout for locking Redis when
     /// loading from RDB.

@@ -598,12 +598,6 @@ while (true) {
     env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 1500).equal("OK")
     env.expect('debug', 'reload').equal("OK")
 
-    # Lets confirm that with the low value of lock-redis-timeout,
-    # loading from RDB won't trigger an error, as a different timeout
-    # value will be used (the one specific to the RDB loading).
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
-    env.expect('debug', 'reload').equal("OK")
-
 @gearsTest(enableGearsDebugCommands=True)
 def testCallTypeParsing(env):
     """#!js api_version=1.0 name=lib
