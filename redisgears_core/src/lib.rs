@@ -546,16 +546,21 @@ struct GlobalCtx {
 
 static mut GLOBALS: Option<GlobalCtx> = None;
 
-pub(crate) struct NotificationBlocker;
+pub(crate) struct NotificationBlocker {
+    old_val: bool,
+}
 
 pub(crate) fn get_notification_blocker() -> NotificationBlocker {
+    let res = NotificationBlocker {
+        old_val: get_globals_mut().avoid_key_space_notifications,
+    };
     get_globals_mut().avoid_key_space_notifications = true;
-    NotificationBlocker
+    res
 }
 
 impl Drop for NotificationBlocker {
     fn drop(&mut self) {
-        get_globals_mut().avoid_key_space_notifications = false;
+        get_globals_mut().avoid_key_space_notifications = self.old_val;
     }
 }
 
