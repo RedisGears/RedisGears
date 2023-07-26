@@ -598,6 +598,18 @@ while (true) {
     env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 1500).equal("OK")
     env.expect('debug', 'reload').equal("OK")
 
+@gearsTest()
+def testRdbTimeoutCantBeLessThanLoadTimeout(env):
+    MINIMAL_TIMEOUT_MS = 100
+
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', MINIMAL_TIMEOUT_MS).contains("value can't be less than lock-redis-timeout")
+    # 500 is the default for the lock-redis-timeout.
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 501).equal("OK")
+    # Test that changing the lock-redis-timeout also increases the
+    # rdb one, if it would be lower.
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', 502).equal("OK")
+    env.expect('CONFIG', 'GET', f'{MODULE_NAME}.rdb-lock-redis-timeout').apply(lambda v: int(v[1])).equal(502)
+
 @gearsTest(enableGearsDebugCommands=True)
 def testCallTypeParsing(env):
     """#!js api_version=1.0 name=lib
