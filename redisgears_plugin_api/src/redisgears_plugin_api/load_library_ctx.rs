@@ -45,6 +45,7 @@ pub trait LibraryCtxInterface {
     fn load_library(
         &self,
         load_library_ctx: &dyn LoadLibraryCtxInterface,
+        is_being_loaded_from_rdb: bool,
     ) -> Result<(), GearsApiError>;
 
     fn get_info(&self) -> Option<ModuleInfo>;
