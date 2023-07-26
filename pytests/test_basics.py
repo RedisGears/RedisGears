@@ -575,18 +575,10 @@ while (true) {
 }
     """
     TIMEOUT_EXPECTED_MS = 1200
+    MINIMAL_TIMEOUT_MS = 100
 
     # Initially it fails due to the default lock-redis-timeout of 500ms.
     env.expect('TFUNCTION', 'LOAD', code).equal("Failed loading library: Err Execution was terminated due to OOM or timeout.")
-
-    # Let's get and store the old timeout value.
-    old_timeout_value = 0
-    def set_old_value(value):
-        nonlocal old_timeout_value
-        old_timeout_value = value
-        return value
-
-    env.expect('CONFIG', 'GET', f'{MODULE_NAME}.lock-redis-timeout').apply(set_old_value)
 
     # We increase the timeout to the expected value + some value to
     # allow for some slack.
@@ -597,12 +589,19 @@ while (true) {
     # Now dump to RDB and load from there. This case makes sure the
     # rdb-lock-redis-timeout is used, by setting it to a minimal
     # possible value.
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 100).equal("OK")
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
     env.expect('debug', 'reload').equal("Error trying to load the RDB dump, check server logs.")
 
     # Now lets bump the RDB timeout higher, so that it should succeed
     # and assert that.
     env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 1500).equal("OK")
+    env.expect('debug', 'reload').equal("OK")
+
+    # Lets confirm that with the low value of lock-redis-timeout,
+    # loading from RDB won't trigger an error, as a different timeout
+    # value will be used (the one specific to the RDB loading).
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
     env.expect('debug', 'reload').equal("OK")
 
 @gearsTest(enableGearsDebugCommands=True)
