@@ -601,7 +601,7 @@ where
                     ctx.add_post_notification_job(move |ctx| {
                         send_new_data(
                             ctx,
-                            Arc::clone(&tracked_stream),
+                            tracked_stream,
                             consumer_weak,
                             record,
                             consumer_info,
