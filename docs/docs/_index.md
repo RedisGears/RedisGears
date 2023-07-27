@@ -4,7 +4,7 @@ description: Trigger and execute JavaScript functions in the Redis process
 linktitle: Triggers and Functions
 type: docs
 stack: true
-bannerText: The Triggers and Functions feature and its documentation is currently in preview. If you notice any errors, feel free to submit an issue to GitHub using the "Create new issue" link in the top right-hand corner of this page.
+bannerText: The Triggers and Functions feature and its documentation are currently in preview, and only available in Redis Stack 7.2 RC3 or later. If you notice any errors, feel free to submit an issue to GitHub using the "Create new issue" link in the top right-hand corner of this page.
 bannerChildren: true
 ---
 
