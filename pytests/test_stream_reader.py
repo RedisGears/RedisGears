@@ -601,3 +601,20 @@ redis.registerStreamTrigger("consumer", "stream",
     env.cmd('get', 'x')
     conn = env.getResp3Connection()
     runUntil(env, 2, lambda: conn.execute_command('TFUNCTION', 'LIST', 'vvv')[0]['stream_triggers'][0]['streams'][0]['total_record_processed'], timeout=5)
+
+@gearsTest(withReplicas=True)
+def testStreamReaderDeletesStream(env):
+    """#!js api_version=1.0 name=lib
+redis.registerStreamTrigger("consumer", "stream",
+    function(client, data) {
+        client.call('del', data.stream_name);
+    },
+    {
+        isStreamTrimmed: true
+    }
+)
+    """
+    slave_conn = env.getSlaveConnection()
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    env.expect('exists', 'stream:1').equal(False)
+    env.assertEqual(slave_conn.execute_command('exists', 'stream:1'), False)

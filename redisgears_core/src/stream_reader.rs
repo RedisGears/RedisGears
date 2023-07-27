@@ -596,14 +596,18 @@ where
             .into_iter()
             .map(|res| {
                 if let Some((consumer_weak, record, consumer_info)) = res {
-                    send_new_data(
-                        ctx,
-                        Arc::clone(&tracked_stream),
-                        consumer_weak,
-                        record,
-                        consumer_info,
-                        Arc::clone(&self.stream_reader),
-                    );
+                    let stream_reader = Arc::clone(&self.stream_reader);
+                    let tracked_stream = Arc::clone(&tracked_stream);
+                    ctx.add_post_notification_job(move |ctx| {
+                        send_new_data(
+                            ctx,
+                            tracked_stream,
+                            consumer_weak,
+                            record,
+                            consumer_info,
+                            stream_reader,
+                        );
+                    });
                 }
             })
             .collect::<Vec<()>>();

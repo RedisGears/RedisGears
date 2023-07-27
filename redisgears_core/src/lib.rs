@@ -1407,10 +1407,14 @@ fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: 
     }
 }
 
-fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+fn generic_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if event == "del" {
-        let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_deleted(event, key);
+        let event = event.to_owned();
+        let key = key.to_vec();
+        ctx.add_post_notification_job(move |_ctx| {
+            let stream_ctx = &mut get_globals_mut().stream_ctx;
+            stream_ctx.on_stream_deleted(&event, &key);
+        });
     }
 }
 
