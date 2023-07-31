@@ -74,12 +74,13 @@ impl redis_module::ConfigurationValue<i64> for LoadLockTimeout {
         val: i64,
     ) -> Result<(), redis_module::RedisError> {
         self.store(val, std::sync::atomic::Ordering::SeqCst);
-        // The RDB lock redis timeout value shouldn't be less than the
+        // The db loading lock redis timeout shouldn't be less than the
         // lock-redis-timeout value, as it wouldn't make sense then.
         // Hence we are updating it here too as well.
-        let current_rdb = DB_LOADING_LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed);
+        let current_db_loading_timeout =
+            DB_LOADING_LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed);
         DB_LOADING_LOCK_REDIS_TIMEOUT.store(
-            std::cmp::max(val, current_rdb),
+            std::cmp::max(val, current_db_loading_timeout),
             std::sync::atomic::Ordering::SeqCst,
         );
         Ok(())
@@ -104,7 +105,7 @@ lazy_static! {
     pub(crate) static ref LOCK_REDIS_TIMEOUT: LoadLockTimeout = LoadLockTimeout::default();
 
     /// Configuration value indicates the timeout for locking Redis when
-    /// loading from RDB.
+    /// loading from persistency (either AOF or RDB).
     pub(crate) static ref DB_LOADING_LOCK_REDIS_TIMEOUT: RdbLockTimeout = RdbLockTimeout::default();
 
     /// Configuration value indicates the gears box url.

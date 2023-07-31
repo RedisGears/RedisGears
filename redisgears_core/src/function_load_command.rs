@@ -331,10 +331,10 @@ pub(crate) fn function_load_command(
     Ok(RedisValue::NoReply)
 }
 
-pub(crate) fn function_load_on_replica(
-    ctx: &Context,
-    args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
+/// Verify that it is OK to perform an internal command.
+/// Internal command should only run if it came from replication stream
+/// or from AOF loading. In other words, the command did not came directly from a user.
+fn verify_internal_command(ctx: &Context) -> Result<(), RedisError> {
     let flags = ctx.get_flags();
     let globals = get_globals();
     if !flags.contains(ContextFlags::LOADING)
@@ -345,9 +345,17 @@ pub(crate) fn function_load_on_replica(
         // Another special option is if the instance is pseudo slave (replica of) which is treated as if the command was replicated from primary.
         // If none of those cases holds we will return an error.
         return Err(RedisError::Str(
-            "Internal command should only be sent from primary of loaded from AOF",
+            "Internal command should only be sent from primary or loaded from AOF",
         ));
     }
+    Ok(())
+}
+
+pub(crate) fn function_load_on_replica(
+    ctx: &Context,
+    args: Skip<IntoIter<redis_module::RedisString>>,
+) -> RedisResult {
+    verify_internal_command(ctx)?;
 
     let args = get_args_values(args)?;
     if args.user.is_none() {
