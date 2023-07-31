@@ -587,28 +587,57 @@ while (true) {
     env.expectTfcall('lib', 'test1').equal("GOODJOB")
 
     # Now dump to RDB and load from there. This case makes sure the
-    # rdb-lock-redis-timeout is used, by setting it to a minimal
+    # loading-lock-redis-timeout is used, by setting it to a minimal
     # possible value.
     env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.loading-lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
     env.expect('debug', 'reload').equal("Error trying to load the RDB dump, check server logs.")
 
-    # Now lets bump the RDB timeout higher, so that it should succeed
-    # and assert that.
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 1500).equal("OK")
-    env.expect('debug', 'reload').equal("OK")
+@gearsTest(withReplicas=True)
+def testLoadingFunctionOnReplicaTakesLoadingTimeout(env):
+    code = """#!js api_version=1.0 name=lib
+redis.registerFunction("test1", function(){
+    return "GOODJOB";
+},{flags: [redis.functionFlags.NO_WRITES]});
+
+const d = new Date();
+let time = d.getTime();
+
+while (true) {
+    if (new Date().getTime() - time > 1000) {
+        break;
+    }
+}
+    """
+    TIMEOUT_EXPECTED_MS = 1200
+
+    # Initially it fails due to the default lock-redis-timeout of 500ms.
+    env.expect('TFUNCTION', 'LOAD', code).equal("Failed loading library: Err Execution was terminated due to OOM or timeout.")
+
+    # We increase the timeout to the expected value + some value to
+    # allow for some slack.
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', TIMEOUT_EXPECTED_MS).equal("OK")
+    env.expect('TFUNCTION', 'LOAD', code).equal("OK")
+    env.expectTfcall('lib', 'test1').equal("GOODJOB")
+
+    # Waiting for replica to get the function load command
+    env.expect('wait', '1', '5000').equal(1)
+
+    # Making sure replica loaded the library successfully
+    replica = env.getSlaveConnection()
+    env.assertEqual(env.tfcall('lib', 'test1', c=replica), "GOODJOB")
 
 @gearsTest()
 def testRdbTimeoutCantBeLessThanLoadTimeout(env):
     MINIMAL_TIMEOUT_MS = 100
 
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', MINIMAL_TIMEOUT_MS).contains("value can't be less than lock-redis-timeout")
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.loading-lock-redis-timeout', MINIMAL_TIMEOUT_MS).contains("value can't be less than lock-redis-timeout")
     # 500 is the default for the lock-redis-timeout.
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.rdb-lock-redis-timeout', 501).equal("OK")
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.loading-lock-redis-timeout', 501).equal("OK")
     # Test that changing the lock-redis-timeout also increases the
     # rdb one, if it would be lower.
     env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', 502).equal("OK")
-    env.expect('CONFIG', 'GET', f'{MODULE_NAME}.rdb-lock-redis-timeout').apply(lambda v: int(v[1])).equal(502)
+    env.expect('CONFIG', 'GET', f'{MODULE_NAME}.loading-lock-redis-timeout').apply(lambda v: int(v[1])).equal(502)
 
 @gearsTest(enableGearsDebugCommands=True)
 def testCallTypeParsing(env):

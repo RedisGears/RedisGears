@@ -178,7 +178,7 @@ No
 The `lock-redis-timeout` configuration option controls the maximum amount of time (in MS) a library can lock Redis. Exceeding this limit is considered a fatal error and will be handled based on the [library-fatal-failure-policy](#library-fatal-failure-policy) configuration value. This
 configuration only affects library loading at runtime with `TFUNCTION LOAD`.
 The timeout for loading a library from RDB is set separately via
-[rdb-lock-redis-timeout](#rdb-lock-redis-timeout).
+[loading-lock-redis-timeout](#loading-lock-redis-timeout).
 
 
 _Expected Value_
@@ -204,11 +204,11 @@ Yes
 ### Side effects
 
 When setting `lock-redis-timeout`, if the new value is higher than the
-`rdb-lock-redis-timeout`, the `rdb-lock-redis-timeout` is also updated to
+`loading-lock-redis-timeout`, the `loading-lock-redis-timeout` is also updated to
 this value.
 
 
-## rdb-lock-redis-timeout
+## loading-lock-redis-timeout
 
 This timeout configuration is used for setting the upper time limit
 (in milliseconds) for the library loading from RDB.
