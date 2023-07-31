@@ -587,10 +587,10 @@ while (true) {
     env.expectTfcall('lib', 'test1').equal("GOODJOB")
 
     # Now dump to RDB and load from there. This case makes sure the
-    # loading-lock-redis-timeout is used, by setting it to a minimal
+    # db-loading-lock-redis-timeout is used, by setting it to a minimal
     # possible value.
     env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.loading-lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.db-loading-lock-redis-timeout', MINIMAL_TIMEOUT_MS).equal("OK")
     env.expect('debug', 'reload').equal("Error trying to load the RDB dump, check server logs.")
 
 @gearsTest(withReplicas=True)
@@ -631,13 +631,13 @@ while (true) {
 def testRdbTimeoutCantBeLessThanLoadTimeout(env):
     MINIMAL_TIMEOUT_MS = 100
 
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.loading-lock-redis-timeout', MINIMAL_TIMEOUT_MS).contains("value can't be less than lock-redis-timeout")
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.db-loading-lock-redis-timeout', MINIMAL_TIMEOUT_MS).contains("value can't be less than lock-redis-timeout")
     # 500 is the default for the lock-redis-timeout.
-    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.loading-lock-redis-timeout', 501).equal("OK")
+    env.expect('CONFIG', 'SET', f'{MODULE_NAME}.db-loading-lock-redis-timeout', 501).equal("OK")
     # Test that changing the lock-redis-timeout also increases the
     # rdb one, if it would be lower.
     env.expect('CONFIG', 'SET', f'{MODULE_NAME}.lock-redis-timeout', 502).equal("OK")
-    env.expect('CONFIG', 'GET', f'{MODULE_NAME}.loading-lock-redis-timeout').apply(lambda v: int(v[1])).equal(502)
+    env.expect('CONFIG', 'GET', f'{MODULE_NAME}.db-loading-lock-redis-timeout').apply(lambda v: int(v[1])).equal(502)
 
 @gearsTest(enableGearsDebugCommands=True)
 def testCallTypeParsing(env):

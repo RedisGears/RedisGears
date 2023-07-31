@@ -55,7 +55,7 @@ impl redis_module::ConfigurationValue<i64> for RdbLockTimeout {
     ) -> Result<(), redis_module::RedisError> {
         if val < LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed) {
             return Err(redis_module::RedisError::Str(
-                "The loading-lock-redis-timeout value can't be less than lock-redis-timeout value.",
+                "The db-loading-lock-redis-timeout value can't be less than lock-redis-timeout value.",
             ));
         }
         self.store(val, std::sync::atomic::Ordering::SeqCst);
@@ -77,8 +77,8 @@ impl redis_module::ConfigurationValue<i64> for LoadLockTimeout {
         // The RDB lock redis timeout value shouldn't be less than the
         // lock-redis-timeout value, as it wouldn't make sense then.
         // Hence we are updating it here too as well.
-        let current_rdb = LOADING_LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed);
-        LOADING_LOCK_REDIS_TIMEOUT.store(
+        let current_rdb = DB_LOADING_LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed);
+        DB_LOADING_LOCK_REDIS_TIMEOUT.store(
             std::cmp::max(val, current_rdb),
             std::sync::atomic::Ordering::SeqCst,
         );
@@ -100,12 +100,12 @@ lazy_static! {
     pub(crate) static ref REMOTE_TASK_DEFAULT_TIMEOUT: AtomicI64 = AtomicI64::default();
 
     /// Configuration value indicates the timeout for locking Redis (except
-    /// for the loading from RDB. For that, see the [`LOADING_LOCK_REDIS_TIMEOUT`]).
+    /// for the loading from RDB. For that, see the [`DB_LOADING_LOCK_REDIS_TIMEOUT`]).
     pub(crate) static ref LOCK_REDIS_TIMEOUT: LoadLockTimeout = LoadLockTimeout::default();
 
     /// Configuration value indicates the timeout for locking Redis when
     /// loading from RDB.
-    pub(crate) static ref LOADING_LOCK_REDIS_TIMEOUT: RdbLockTimeout = RdbLockTimeout::default();
+    pub(crate) static ref DB_LOADING_LOCK_REDIS_TIMEOUT: RdbLockTimeout = RdbLockTimeout::default();
 
     /// Configuration value indicates the gears box url.
     pub(crate) static ref GEARS_BOX_ADDRESS: RedisGILGuard<String> = RedisGILGuard::default();
