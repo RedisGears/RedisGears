@@ -25,8 +25,8 @@ use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply
 use serde::{Deserialize, Serialize};
 
 use config::{
-    FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
-    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, RDB_LOCK_REDIS_TIMEOUT, V8_FLAGS,
+    FatalFailurePolicyConfiguration, DB_LOADING_LOCK_REDIS_TIMEOUT, ENABLE_DEBUG_COMMAND,
+    ERROR_VERBOSITY, EXECUTION_THREADS, FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_FLAGS,
     V8_LIBRARY_INITIAL_MEMORY_LIMIT, V8_LIBRARY_INITIAL_MEMORY_USAGE,
     V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY, V8_PLUGIN_PATH,
 };
@@ -951,7 +951,9 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
         }),
         get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
-        get_rdb_lock_timeout: Box::new(|| RDB_LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
+        get_rdb_lock_timeout: Box::new(|| {
+            DB_LOADING_LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128
+        }),
         get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
         get_v8_library_initial_memory: Box::new(|| {
             V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
@@ -1747,7 +1749,7 @@ mod gears_module {
                 ["execution-threads", &*EXECUTION_THREADS ,1, 1, 32, ConfigurationFlags::IMMUTABLE, None],
                 ["remote-task-default-timeout", &*REMOTE_TASK_DEFAULT_TIMEOUT , 500, 1, i64::MAX, ConfigurationFlags::DEFAULT, None],
                 ["lock-redis-timeout", &*LOCK_REDIS_TIMEOUT , 500, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
-                ["rdb-lock-redis-timeout", &*RDB_LOCK_REDIS_TIMEOUT , 30000, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
+                ["db-loading-lock-redis-timeout", &*DB_LOADING_LOCK_REDIS_TIMEOUT , 30000, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
 
                 [
                     "v8-maxmemory",

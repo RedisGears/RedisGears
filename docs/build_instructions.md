@@ -75,7 +75,7 @@ export PATH=/home/meir/.cargo/bin:$PATH
 ```
 
 #### MSRV (Minimally Supported Rust Version)
-Currently the edition 2021 of Rust language is used and the MSRV is `1.65`.
+Currently the edition 2021 of Rust language is used and the MSRV is `1.67`.
 
 ## Build_Release
 

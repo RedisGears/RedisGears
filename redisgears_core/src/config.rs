@@ -55,7 +55,7 @@ impl redis_module::ConfigurationValue<i64> for RdbLockTimeout {
     ) -> Result<(), redis_module::RedisError> {
         if val < LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed) {
             return Err(redis_module::RedisError::Str(
-                "The rdb-lock-redis-timeout value can't be less than lock-redis-timeout value.",
+                "The db-loading-lock-redis-timeout value can't be less than lock-redis-timeout value.",
             ));
         }
         self.store(val, std::sync::atomic::Ordering::SeqCst);
@@ -74,12 +74,13 @@ impl redis_module::ConfigurationValue<i64> for LoadLockTimeout {
         val: i64,
     ) -> Result<(), redis_module::RedisError> {
         self.store(val, std::sync::atomic::Ordering::SeqCst);
-        // The RDB lock redis timeout value shouldn't be less than the
+        // db-loading-lock-redis-timeout shouldn't be less than the
         // lock-redis-timeout value, as it wouldn't make sense then.
         // Hence we are updating it here too as well.
-        let current_rdb = RDB_LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed);
-        RDB_LOCK_REDIS_TIMEOUT.store(
-            std::cmp::max(val, current_rdb),
+        let current_db_loading_timeout =
+            DB_LOADING_LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed);
+        DB_LOADING_LOCK_REDIS_TIMEOUT.store(
+            std::cmp::max(val, current_db_loading_timeout),
             std::sync::atomic::Ordering::SeqCst,
         );
         Ok(())
@@ -100,12 +101,12 @@ lazy_static! {
     pub(crate) static ref REMOTE_TASK_DEFAULT_TIMEOUT: AtomicI64 = AtomicI64::default();
 
     /// Configuration value indicates the timeout for locking Redis (except
-    /// for the loading from RDB. For that, see the [`RDB_LOCK_REDIS_TIMEOUT`]).
+    /// for the loading from RDB. For that, see the [`DB_LOADING_LOCK_REDIS_TIMEOUT`]).
     pub(crate) static ref LOCK_REDIS_TIMEOUT: LoadLockTimeout = LoadLockTimeout::default();
 
     /// Configuration value indicates the timeout for locking Redis when
-    /// loading from RDB.
-    pub(crate) static ref RDB_LOCK_REDIS_TIMEOUT: RdbLockTimeout = RdbLockTimeout::default();
+    /// loading from persistency (either AOF, RDB or replication stream).
+    pub(crate) static ref DB_LOADING_LOCK_REDIS_TIMEOUT: RdbLockTimeout = RdbLockTimeout::default();
 
     /// Configuration value indicates the gears box url.
     pub(crate) static ref GEARS_BOX_ADDRESS: RedisGILGuard<String> = RedisGILGuard::default();
