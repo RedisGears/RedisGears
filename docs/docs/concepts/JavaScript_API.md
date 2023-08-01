@@ -20,14 +20,6 @@ The Triggers and Functions JavaScript API provides a singleton instance of an ob
 Register a new function that can later be invoke using `TFCALL` command.
 
 ```JavaScript
-// Object with all arguments
-redis.registerFunction({
-  name: 'foo', 
-  description: 'description', 
-  flags: [redis.functionFlags.NO_WRITES, redis.functionFlags.ALLOW_OOM],
-  callback: function(client, args){}
-});
-
 //name and callback mandatory
 //object with optional arguments
 redis.registerFunction(
@@ -47,14 +39,6 @@ redis.registerFunction(
 Register a new async function that can later be invoke using `TFCALLASYNC` command.
 
 ```JavaScript
-// Object with all mandatory and optional arguments
-redis.registerAsyncFunction({
-  name: 'foo', 
-  description: 'description',
-  flags: [redis.functionFlags.NO_WRITES, redis.functionFlags.ALLOW_OOM],
-  callback: function(client, args){}
-});
-
 redis.registerAsyncFunction(
   'foo', //Function name
   function(client, args){}, //callback
@@ -72,24 +56,12 @@ redis.registerAsyncFunction(
 Register a key space notification trigger that will run whenever a key space notification fired.
 
 ```JavaScript
-redis.registerKeySpaceTrigger({
-  name: 'foo', 
-  description: 'description',
-  prefix: 'keys:*',
-  eventTypes: ['hset'],
-  keyTypes: ['hash'],
-  callback: function(client, data){},
-  onTriggerFired: function(client, data){}
-})
-
 redis.registerKeySpaceTrigger(
   'foo', // trigger name
   'keys:*', //key prefix
   function(client, data) {}, //callback
   {
     description: 'description'
-    eventTypes: ['hset'],
-    keyTypes: ['hash'],
     onTriggerFired: function(client, data){}
   } //optional arguments
 )
@@ -102,15 +74,6 @@ redis.registerKeySpaceTrigger(
 Register a stream trigger that will be invoke whenever a data is added to a stream.
 
 ```JavaScript
-redis.registerStreamTrigger({
-  name: 'foo',
-  description: '',
-  prefix: 'stream1',
-  window: 1,
-  isStreamTrimmed: false,
-  callback: function(client, data){}
-});
-
 redis.registerStreamTrigger(
   'foo', //trigger name
   'stream:*', //prefix
