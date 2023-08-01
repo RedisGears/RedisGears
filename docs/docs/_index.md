@@ -17,7 +17,7 @@ Triggers and Functions allows running JavaScript functions inside the Redis Proc
 
 ## Quick links
 
-* [Quick start guide](/docs/stack/redisgears/quick_start)
+* [Quick start guide](/docs/interact/programmability/triggers-and-functions/quick_start)
 * [Source code](https://github.com/RedisGears/RedisGears)
 * [Latest release](https://github.com/RedisGears/RedisGears/releases)
 * [Docker image](https://hub.docker.com/r/redis/redis-stack-server/)
