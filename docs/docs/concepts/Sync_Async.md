@@ -217,7 +217,7 @@ RedisGears also provided `client.callAsyncRaw` API, which is the same as `client
 
 Blocking Redis might fail for a few reasons:
 
-* Redis reached OOM state and the `redis.functionFlags.NO_WRITES` or `redis.functionFlags.ALLOW_OOM` flags are not set (see [functions flags](./Function_Flags.md) for more information)
+* Redis reached OOM state and the `redis.functionFlags.NO_WRITES` or `redis.functionFlags.ALLOW_OOM` flags are not set (see [functions flags](/docs/interact/programmability/triggers-and-functions/concepts/function_flags/) for more information)
 * `redis.functionFlags.NO_WRITES` flag is not set and the Redis instance changed roles and is now a replica.
 * The ACL user that invoked the function was deleted.
 
@@ -225,7 +225,7 @@ The failure will result in an exception that the function writer can choose to h
 
 # Block Redis Timeout
 
-Blocking Redis for a long time is discouraged and is considered an unsafe operation. Triggers and Functions attempts to protect the function writer and will time out the blocking function if it continues for too long. The timeout can be set as a [module configuration](./../Configuration.md) along side the fatal failure policy that indicates how to handle the timeout. Policies can be one of the following:
+Blocking Redis for a long time is discouraged and is considered an unsafe operation. Triggers and Functions attempts to protect the function writer and will time out the blocking function if it continues for too long. The timeout can be set as a [module configuration](/docs/interact/programmability/triggers-and-functions/configuration/) along side the fatal failure policy that indicates how to handle the timeout. Policies can be one of the following:
 
 * Abort - Stop the function invocation even at the cost of losing the atomicity property.
 * Kill - Keep the atomicity property and do not stop the function invocation. In this case there is a risk of an external process killing the Redis server, thinking that the shard is not responding.
