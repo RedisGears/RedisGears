@@ -1,18 +1,18 @@
 ---
-title: "Triggers and Functions Examples"
+title: "Triggers and functions Examples"
 linkTitle: "Examples"
 weight: 5
 description: >
-    How Triggers and Functions can be used
+    How triggers and functions can be used
 ---
 
-Triggers and Functions enable the detection of changes to data as they happen and guarantee seamless execution of business logic at the data source. This ensures that new options to manipulate the data are possible and can be delivered for all the clients at the same time, while deployment and maintenance are simplified. Let's explore some industry-specific use cases where these capabilities shine:
+Redis Stack's triggers and functions feature enables the detection of changes to data as they happen and guarantee seamless execution of business logic at the data source. This ensures that new options to manipulate the data are possible and can be delivered for all the clients at the same time, while deployment and maintenance are simplified. Let's explore some industry-specific use cases where these capabilities shine:
 
 - **Retail**: In the retail sector, a function can be developed to update the inventory immediately upon order receipt. This empowers businesses to accurately predict stock requirements for specific warehouses on any given day.
 - **Travel**: For the travel industry, a trigger can be utilized to detect new flight bookings and efficiently load the relevant information into a queue for different consumers. Services can then leverage this data to provide recommendations for hotels, restaurants, car rental services, and more. Leveraging Redis geometries, powerful recommendation systems can offer localized and personalized suggestions.
 - **Subscription Services**: In the realm of subscription services, employing a keyspace trigger can automatically identify users whose subscriptions have been renewed, seamlessly changing their status to active. Further operations can be performed on these users, such as adding them to a queue for the delivery of notifications or executing additional actions.
 
-These examples highlight the practical application of Triggers and Functions in different industries, showcasing their value in streamlining processes and delivering efficient solutions. 
+These examples highlight the practical application of triggers and functions in different industries, showcasing their value in streamlining processes and delivering efficient solutions. 
 
 Using keyspace and Stream triggers to capture events and execute the desired JavaScript functions requires few lines of code to enrich applications with new behaviors. The following examples show how typical problems are solved with JavaScript.
 

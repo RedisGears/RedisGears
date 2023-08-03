@@ -6,7 +6,7 @@ description: >
     Working with binary data
 ---
 
-By default, Triggers and Functions will decode all data as a string and will raise error on failures. Though useful for most users, sometimes there is a need to work with binary data. In order to do so, the library developer has to consider the following:
+By default, triggers and functions will decode all data as a string and will raise error on failures. Though useful for most users, sometimes there is a need to work with binary data. In order to do so, the library developer has to consider the following:
 
 1. Binary function arguments
 2. Binary command results
@@ -15,7 +15,7 @@ By default, Triggers and Functions will decode all data as a string and will rai
 
 ### Binary Function Arguments
 
-It is possible to instruct Triggers and Functions not to decode function arguments as `JS` `Strings` using the [redis.functionFlags.RAW_ARGUMENTS](/docs/interact/programmability/triggers-and-functions/concepts/function_flags/) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
+It is possible to instruct triggers and functions not to decode function arguments as `JS` `Strings` using the [redis.functionFlags.RAW_ARGUMENTS](/docs/interact/programmability/triggers-and-functions/concepts/function_flags/) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js api_version=1.0 name=lib

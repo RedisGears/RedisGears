@@ -3,7 +3,7 @@ title: "Quick start"
 linkTitle: "Quick start"
 weight: 1
 description: >
-    Get started with Triggers and Functions
+    Get started with triggers and functions
 ---
 
 Use the `TFUNCION LOAD` command to create a new library in your Redis instance.
