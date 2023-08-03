@@ -33,9 +33,9 @@ Argument Description:
 
 * consumer - the consumer name.
 * stream - streams name prefix on which to trigger the callback.
-* callback - the callback to invoke on each element in the stream. Following the same rules of [Sync and Async invocation](../Sync_Async.md). The callback will be invoke only on primary shard.
+* callback - the callback to invoke on each element in the stream. Following the same rules of [Sync and Async invocation](/docs/interact/programmability/triggers-and-functions/concepts/sync_async/). The callback will be invoke only on primary shard.
 
-If we register this library (see the [quick start](../../Quick_Start.md) section to learn how to Register a RedisGears function) and run the following command on our Redis:
+If we register this library (see the [quick start](/docs/interact/programmability/triggers-and-functions/quick_start/) section to learn how to Register a RedisGears function) and run the following command on our Redis:
 
 ```
 XADD stream:1 * foo1 bar1
