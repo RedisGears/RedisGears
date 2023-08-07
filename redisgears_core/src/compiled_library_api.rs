@@ -13,19 +13,19 @@ use std::collections::LinkedList;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct CompiledLibraryInternals {
-    mutex: Mutex<LinkedList<Box<dyn FnOnce() + Send>>>,
+    jobs: Mutex<LinkedList<Box<dyn FnOnce() + Send>>>,
 }
 
 impl CompiledLibraryInternals {
     fn new() -> CompiledLibraryInternals {
         CompiledLibraryInternals {
-            mutex: Mutex::new(LinkedList::new()),
+            jobs: Mutex::new(LinkedList::new()),
         }
     }
 
     fn run_next_job(internals: &Arc<CompiledLibraryInternals>) {
         let (job, jobs_left) = {
-            let mut queue = internals.mutex.lock().unwrap();
+            let mut queue = internals.jobs.lock().unwrap();
             let job = queue.pop_back();
             match job {
                 Some(j) => (j, queue.len()),
@@ -43,7 +43,7 @@ impl CompiledLibraryInternals {
 
     fn add_job(internals: &Arc<CompiledLibraryInternals>, job: Box<dyn FnOnce() + Send>) {
         let pending_jobs = {
-            let mut queue = internals.mutex.lock().unwrap();
+            let mut queue = internals.jobs.lock().unwrap();
             let pending_jobs = queue.len();
             queue.push_front(job);
             pending_jobs
@@ -57,7 +57,7 @@ impl CompiledLibraryInternals {
     }
 
     pub(crate) fn pending_jobs(&self) -> usize {
-        let queue = self.mutex.lock().unwrap();
+        let queue = self.jobs.lock().unwrap();
         queue.len()
     }
 }

@@ -4,17 +4,21 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use crate::get_globals;
+use redis_module::ContextFlags;
 use redis_module::{
     Context, NextArg, RedisError, RedisResult, RedisString, RedisValue, ThreadSafeContext,
 };
-use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::DebuggerBackend;
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::LibraryCtxInterface;
+use redisgears_plugin_api::redisgears_plugin_api::{GearsApiError, GearsApiResult};
 
-use crate::compiled_library_api::CompiledLibraryAPI;
-use crate::{get_backend, verify_name, Deserialize, Serialize};
+use crate::compiled_library_api::{CompiledLibraryAPI, CompiledLibraryInternals};
+use crate::config::V8_DEBUG_SERVER_ADDRESS;
+use crate::{get_backend, get_backends_mut, verify_name, Deserialize, Serialize};
 
-use crate::{
-    get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData, GearsLoadLibraryCtx,
-};
+use crate::{get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData};
 
 use mr::libmr::{
     record::Record as LibMRRecord, remote_task::run_on_all_shards, remote_task::RemoteTask,
@@ -31,12 +35,105 @@ use crate::get_msg_verbose;
 
 use mr_derive::BaseObject;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct FunctionLoadArgs {
     upgrade: bool,
     config: Option<String>,
     code: String,
     user: Option<RedisString>,
+    debug: bool,
+}
+
+/// A [RedisString] that implements [Send].
+#[repr(transparent)]
+#[derive(Debug, Clone)]
+pub(crate) struct ParkedRedisString(RedisString);
+unsafe impl Send for ParkedRedisString {}
+impl From<RedisString> for ParkedRedisString {
+    fn from(value: RedisString) -> Self {
+        Self(value)
+    }
+}
+impl std::ops::Deref for ParkedRedisString {
+    type Target = RedisString;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// The data of a compiled library.
+pub(crate) struct CompiledLibraryData {
+    meta_data: GearsLibraryMetaData,
+    library_ctx_interface: Box<dyn LibraryCtxInterface>,
+    compiled_library_internals: Arc<CompiledLibraryInternals>,
+}
+
+/// The compilation arguments for a script.
+#[derive(Debug, Clone)]
+pub(crate) struct CompilationArguments {
+    user: ParkedRedisString,
+    code: String,
+    config: Option<String>,
+}
+
+impl TryFrom<FunctionLoadArgs> for CompilationArguments {
+    type Error = &'static str;
+
+    fn try_from(args: FunctionLoadArgs) -> Result<Self, Self::Error> {
+        Ok(Self::new(
+            args.user.ok_or("User should've been set.")?,
+            args.code,
+            args.config,
+        ))
+    }
+}
+
+impl CompilationArguments {
+    /// Creates a new
+    pub(crate) fn new<T: Into<ParkedRedisString>>(
+        user: T,
+        code: String,
+        config: Option<String>,
+    ) -> Self {
+        Self {
+            user: user.into(),
+            code,
+            config,
+        }
+    }
+
+    pub(crate) fn compile(&self, debug: bool) -> GearsApiResult<CompiledLibraryData> {
+        compile_library(self, debug)
+    }
+
+    /// Returns the library metadata.
+    pub(crate) fn get_metadata(&self) -> Result<GearsLibraryMetaData, RedisError> {
+        library_extract_metadata(&self.code, self.config.clone(), self.user.0.clone())
+    }
+
+    /// Returns the library name.
+    pub(crate) fn get_library_name(&self) -> GearsApiResult<String> {
+        self.get_metadata()
+            .map_err(|e| GearsApiError::new(e.to_string()))
+            .map(|m| m.name)
+    }
+
+    /// Returns a mutable reference to the backend for the library.
+    pub(crate) fn get_backend_mut(
+        &self,
+    ) -> Result<&mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
+        get_backend(self.get_metadata()?.engine.as_str())
+    }
+}
+
+fn start_debug_server_for_library(
+    address: &str,
+    compilation_arguments: &CompilationArguments,
+) -> Result<Box<dyn DebuggerBackend + Send>, GearsApiError> {
+    compilation_arguments
+        .get_backend_mut()?
+        .start_debug_server(address)
 }
 
 fn library_extract_metadata(
@@ -92,27 +189,47 @@ pub(crate) fn function_load_revert(
     }
 }
 
-pub(crate) fn function_load_internal(
-    ctx: &Context,
-    user: RedisString,
-    code: &str,
-    config: Option<String>,
-    upgrade: bool,
-    is_loading_rdb: bool,
-) -> Result<(), String> {
-    let meta_data = library_extract_metadata(code, config, user).map_err(|e| e.to_string())?;
-    let backend_name = meta_data.engine.as_str();
-    let backend = get_backend(ctx, backend_name).map_err(|e| e.to_string())?;
+fn compile_library(
+    compilation_arguments: &CompilationArguments,
+    debug: bool,
+) -> GearsApiResult<CompiledLibraryData> {
+    let meta_data = compilation_arguments
+        .get_metadata()
+        .map_err(GearsApiError::from)?;
+    let backend = compilation_arguments.get_backend_mut()?;
     let compile_lib_ctx = CompiledLibraryAPI::new();
     let compile_lib_internals = compile_lib_ctx.take_internals();
-    let lib_ctx = backend.compile_library(
+    let library = backend.compile_library(
+        debug,
         &meta_data.name,
-        code,
+        &compilation_arguments.code,
         meta_data.api_version,
         meta_data.config.as_ref(),
         Box::new(compile_lib_ctx),
+    )?;
+
+    Ok(CompiledLibraryData {
+        meta_data,
+        library_ctx_interface: library,
+        compiled_library_internals: compile_lib_internals,
+    })
+}
+
+pub(crate) fn function_load_internal(
+    ctx: &Context,
+    compilation_arguments: CompilationArguments,
+    debug: bool,
+    upgrade: bool,
+    is_loading_rdb: bool,
+) -> Result<Arc<GearsLibrary>, String> {
+    let compiled_library_data = compilation_arguments
+        .compile(debug)
+        .map_err(|e| format!("Failed library compilation: {}", e.get_msg()))?;
+    let (meta_data, lib_ctx, compile_lib_internals) = (
+        compiled_library_data.meta_data,
+        compiled_library_data.library_ctx_interface,
+        compiled_library_data.compiled_library_internals,
     );
-    let lib_ctx = lib_ctx.map_err(|e| format!("Failed library compilation: {}", e.get_msg()))?;
     let mut libraries = get_libraries();
     let old_lib = libraries.remove(&meta_data.name);
     if !upgrade {
@@ -122,54 +239,41 @@ pub(crate) fn function_load_internal(
             return err;
         }
     }
-    let mut gears_library = GearsLibraryCtx {
-        meta_data: Arc::new(meta_data),
-        functions: HashMap::new(),
-        remote_functions: HashMap::new(),
-        stream_consumers: HashMap::new(),
-        notifications_consumers: HashMap::new(),
-        revert_stream_consumers: Vec::new(),
-        revert_notifications_consumers: Vec::new(),
-        old_lib,
-    };
-    let res = lib_ctx.load_library(
-        &GearsLoadLibraryCtx {
-            ctx,
-            gears_lib_ctx: &mut gears_library,
-        },
-        is_loading_rdb,
-    );
+    let mut gears_library_ctx = GearsLibraryCtx::new(Arc::new(meta_data), old_lib);
+    let res = lib_ctx.load_library(&gears_library_ctx.get_loader(ctx), is_loading_rdb);
     if let Err(err) = res {
-        function_load_revert(gears_library, &mut libraries);
+        function_load_revert(gears_library_ctx, &mut libraries);
 
         return Err(format!(
             "Failed loading library: {}.",
             get_msg_verbose(&err)
         ));
     }
-    if gears_library.functions.is_empty()
-        && gears_library.stream_consumers.is_empty()
-        && gears_library.notifications_consumers.is_empty()
+    if gears_library_ctx.functions.is_empty()
+        && gears_library_ctx.stream_consumers.is_empty()
+        && gears_library_ctx.notifications_consumers.is_empty()
     {
-        function_load_revert(gears_library, &mut libraries);
+        function_load_revert(gears_library_ctx, &mut libraries);
         return Err("Neither function nor other registrations were found.".to_owned());
     }
-    gears_library.old_lib = None;
+    gears_library_ctx.old_lib = None;
+    let gears_library = Arc::new(GearsLibrary {
+        gears_lib_ctx: gears_library_ctx,
+        lib_ctx,
+        compile_lib_internals,
+    });
     libraries.insert(
-        gears_library.meta_data.name.to_string(),
-        Arc::new(GearsLibrary {
-            gears_lib_ctx: gears_library,
-            lib_ctx,
-            compile_lib_internals,
-        }),
+        gears_library.gears_lib_ctx.meta_data.name.clone(),
+        gears_library.clone(),
     );
-    Ok(())
+    Ok(gears_library)
 }
 
 fn get_args_values(
     mut args: Skip<IntoIter<redis_module::RedisString>>,
 ) -> Result<FunctionLoadArgs, RedisError> {
     let mut replace = false;
+    let mut debug = false;
     let mut config = None;
     let mut user = None;
     let last_arg = loop {
@@ -185,6 +289,7 @@ fn get_args_values(
         let arg_str = arg_str.to_lowercase();
         match arg_str.as_ref() {
             "replace" => replace = true,
+            "debug" => debug = true,
             "user" => {
                 let arg = args
                     .next_arg()
@@ -224,6 +329,7 @@ fn get_args_values(
         upgrade: replace,
         config,
         code,
+        debug,
         user,
     })
 }
@@ -271,11 +377,15 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
         let res = {
             let ctx_guard = ThreadSafeContext::new().lock();
             let user = r.args.user.unwrap();
+            let compilation_arguments = CompilationArguments::new(
+                user.safe_clone(&ctx_guard),
+                r.args.code.clone(),
+                r.args.config.clone(),
+            );
             let res = function_load_internal(
                 &ctx_guard,
-                user.safe_clone(&ctx_guard),
-                &r.args.code,
-                r.args.config.clone(),
+                compilation_arguments,
+                false,
                 r.args.upgrade,
                 false,
             );
@@ -300,8 +410,90 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
     }
 }
 
-pub(crate) fn function_load_with_args(ctx: &Context, args: FunctionLoadArgs) {
-    let blocked_client = ctx.block_client();
+/// Loads the function only on this shard, starts a debugger server,
+/// waits for the connection and starts the debugging session.
+fn function_load_with_args_with_debugger(
+    context: &Context,
+    args: FunctionLoadArgs,
+) -> RedisResult<()> {
+    let blocked_client = context.block_client();
+    let thread_ctx = ThreadSafeContext::with_blocked_client(blocked_client);
+
+    let address = { &V8_DEBUG_SERVER_ADDRESS.lock(context) };
+
+    let mut global_debugger_server = crate::get_globals_mut()
+        .debugger_server
+        .lock()
+        .expect("Couldn't lock the debugger server");
+    if global_debugger_server.is_some() {
+        return Err(RedisError::Str(
+            "Only one debugging session can be established at a time.",
+        ));
+    }
+
+    let compilation_arguments = CompilationArguments::try_from(args).map_err(|e| {
+        RedisError::String(format!("Couldn't build the compilation arguments: {e}"))
+    })?;
+    let library_name = compilation_arguments.get_library_name()?;
+
+    // let mut compiled_library_data = compilation_arguments.compile(true)?;
+    // let backend_name = compiled_library_data.meta_data.engine.clone();
+    // let debug_payload = compiled_library_data
+    //     .library_ctx_interface
+    //     .get_debug_payload()?;
+    let gears_library =
+        function_load_internal(context, compilation_arguments.clone(), true, false, false)
+            .map_err(RedisError::String)?;
+    let backend_name = gears_library.get_backend_name().to_owned();
+    let debug_payload = gears_library.lib_ctx.get_debug_payload()?;
+
+    let (connection_hints_message, mut debugger_server) =
+        start_debug_server_for_library(address, &compilation_arguments)
+            .map(|debugger_server| {
+                let connection_hints_message = RedisValue::VerbatimString((
+                    "txt"
+                        .try_into()
+                        .expect("Couldn't create a VerbatimStringFormat"),
+                    debugger_server
+                        .get_connection_hints()
+                        .unwrap_or_else(|| "The debugger server has started.".to_string())
+                        .as_bytes()
+                        .to_vec(),
+                ));
+                (connection_hints_message, debugger_server)
+            })
+            .map_err(|e| RedisError::String(e.to_string()))?;
+
+    thread_ctx.reply(Ok(connection_hints_message));
+
+    let join_handle = debugger_server
+        .accept_connection()
+        .map_err(|e| RedisError::String(e.to_string()))
+        .map(|_| {
+            std::thread::Builder::new()
+                .name(format!("DebuggerThread-{library_name}"))
+                .spawn(move || {
+                    let backend = get_backends_mut().get_mut(&backend_name).ok_or_else(|| {
+                        GearsApiError::new(format!("Unknown backend {backend_name}"))
+                    })?;
+                    debugger_server
+                        .start(backend, debug_payload)
+                        .map_err(|e| RedisError::String(e.to_string()))
+                })
+                .expect("Couldn't start a debugger thread")
+        })?;
+
+    let _ = global_debugger_server.insert(join_handle.into());
+
+    Ok(())
+}
+
+/// Loads the provided function on the current shard and other shards.
+pub(crate) fn function_load_with_args_without_debugger(
+    context: &Context,
+    args: FunctionLoadArgs,
+) -> RedisResult<()> {
+    let blocked_client = context.block_client();
     run_on_all_shards(
         GearsFunctionLoadRemoteTask,
         GearsFunctionLoadInputRecord { args },
@@ -315,6 +507,19 @@ pub(crate) fn function_load_with_args(ctx: &Context, args: FunctionLoadArgs) {
         },
         10000,
     );
+
+    Ok(())
+}
+
+pub(crate) fn function_load_with_args(context: &Context, args: FunctionLoadArgs) {
+    if let Err(e) = if args.debug {
+        function_load_with_args_with_debugger(context, args)
+    } else {
+        function_load_with_args_without_debugger(context, args)
+    } {
+        let blocked_client = context.block_client();
+        ThreadSafeContext::with_blocked_client(blocked_client).reply(Err(e));
+    }
 }
 
 pub(crate) fn function_load_command(
@@ -330,16 +535,37 @@ pub(crate) fn function_load_command(
     Ok(RedisValue::NoReply)
 }
 
+/// Verify that it is OK to perform an internal command.
+/// Internal command should only run if it came from replication stream
+/// or from AOF loading. In other words, the command did not came directly from a user.
+fn verify_internal_command(ctx: &Context) -> Result<(), RedisError> {
+    let flags = ctx.get_flags();
+    let globals = get_globals();
+    if !flags.contains(ContextFlags::LOADING)
+        && !(flags.contains(ContextFlags::REPLICATED) || globals.db_policy.is_pseudo_slave())
+    {
+        // Internal commands should either be loaded from AOF ([`ContextFlags::LOADING`])
+        // or sent over the replication stream([`ContextFlags::REPLICATED`]).
+        // Another special option is if the instance is pseudo slave (replica of) which is treated as if the command was replicated from primary.
+        // If none of those cases holds we will return an error.
+        return Err(RedisError::Str(
+            "Internal command should only be sent from primary or loaded from AOF",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn function_load_on_replica(
     ctx: &Context,
     args: Skip<IntoIter<redis_module::RedisString>>,
 ) -> RedisResult {
     let args = get_args_values(args)?;
-    if args.user.is_none() {
-        return Err(RedisError::Str("User was not provided by primary"));
-    }
+    let user = args
+        .user
+        .ok_or(RedisError::Str("User was not provided by primary"))?;
+    let compilation_arguments = CompilationArguments::new(user, args.code, args.config);
     // On replica, we always obey the primary and perform an upgrade.
-    match function_load_internal(ctx, args.user.unwrap(), &args.code, args.config, true, true) {
+    match function_load_internal(ctx, args, false, true, true) {
         Ok(_) => Ok(RedisValue::SimpleStringStatic("OK")),
         Err(e) => Err(RedisError::String(e)),
     }

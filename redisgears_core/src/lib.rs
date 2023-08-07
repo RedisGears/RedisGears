@@ -234,6 +234,30 @@ struct GearsLibraryCtx {
     old_lib: Option<Arc<GearsLibrary>>,
 }
 
+impl GearsLibraryCtx {
+    /// Creates a new [GearsLibraryCtx].
+    fn new(meta_data: Arc<GearsLibraryMetaData>, old_library: Option<Arc<GearsLibrary>>) -> Self {
+        Self {
+            meta_data,
+            functions: HashMap::new(),
+            remote_functions: HashMap::new(),
+            stream_consumers: HashMap::new(),
+            notifications_consumers: HashMap::new(),
+            revert_stream_consumers: Vec::new(),
+            revert_notifications_consumers: Vec::new(),
+            old_lib: old_library,
+        }
+    }
+
+    /// Returns a loader ([GearsLoadLibraryCtx]) for this [GearsLibraryCtx].
+    pub(crate) fn get_loader<'a>(&'a mut self, ctx: &'a Context) -> GearsLoadLibraryCtx {
+        GearsLoadLibraryCtx {
+            ctx,
+            gears_lib_ctx: self,
+        }
+    }
+}
+
 struct GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
     ctx: &'ctx Context,
     gears_lib_ctx: &'lib_ctx mut GearsLibraryCtx,
@@ -243,6 +267,13 @@ struct GearsLibrary {
     gears_lib_ctx: GearsLibraryCtx,
     lib_ctx: Box<dyn LibraryCtxInterface>,
     compile_lib_internals: Arc<CompiledLibraryInternals>,
+}
+
+impl GearsLibrary {
+    /// Returns the backend name used by this library.
+    pub(crate) fn get_backend_name(&self) -> &str {
+        &self.gears_lib_ctx.meta_data.engine
+    }
 }
 
 impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
@@ -526,6 +557,18 @@ impl DbPolicy {
     }
 }
 
+/// A debugger server is a thread that executes a user library with
+/// a remote debugger attached.
+#[derive(Debug)]
+struct DebuggerServer {
+    join_handle: std::thread::JoinHandle<Result<(), RedisError>>,
+}
+impl From<std::thread::JoinHandle<Result<(), RedisError>>> for DebuggerServer {
+    fn from(join_handle: std::thread::JoinHandle<Result<(), RedisError>>) -> Self {
+        Self { join_handle }
+    }
+}
+
 struct GlobalCtx {
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
     backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
@@ -543,6 +586,7 @@ struct GlobalCtx {
     db_policy: DbPolicy,
     future_handlers: HashMap<String, Vec<Weak<RedisGILGuard<FutureHandlerContext>>>>,
     avoid_replication_traffic: bool,
+    debugger_server: Mutex<Option<DebuggerServer>>,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -854,12 +898,12 @@ fn load_v8_backend(
 }
 
 fn initialize_v8_backend(
-    _ctx: &Context,
     uninitialised_backend: Box<dyn BackendCtxInterfaceUninitialised>,
 ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
     let name = uninitialised_backend.get_name();
-    let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> =
-        uninitialised_backend.initialize().map_err(|e| {
+    let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> = uninitialised_backend
+        .initialize(log::logger())
+        .map_err(|e| {
             RedisError::String(format!("Failed loading {} backend, {}.", name, e.get_msg()))
         })?;
     let version = initialised_backend.get_version();
@@ -868,17 +912,16 @@ fn initialize_v8_backend(
 }
 
 pub(crate) fn get_backend(
-    ctx: &Context,
     name: &str,
 ) -> Result<&'static mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
     get_backends_mut()
         .get_mut(name)
-        .ok_or(RedisError::Str("No such backend"))
+        .ok_or(RedisError::String(format!("No such backend: {name}")))
         .or_else(|_| {
             let uninitialised_backend = get_uninitialised_backends_mut()
                 .remove(name)
-                .ok_or_else(|| RedisError::String(format!("Unknown backend {}", name)))?;
-            let backend = initialize_v8_backend(ctx, uninitialised_backend)?;
+                .ok_or_else(|| RedisError::String(format!("Unknown backend {name}")))?;
+            let backend = initialize_v8_backend(uninitialised_backend)?;
             Ok(get_backends_mut().entry(name.to_owned()).or_insert(backend))
         })
 }
@@ -1037,6 +1080,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         db_policy: get_db_policy(ctx),
         future_handlers: HashMap::new(),
         avoid_replication_traffic: false,
+        debugger_server: Mutex::new(None),
     };
 
     unsafe { GLOBALS = Some(global_ctx) };
@@ -1376,7 +1420,7 @@ fn function_debug_command(
         }
         _ => (),
     }
-    let backend = get_backend(ctx, backend_name).map_or(
+    let backend = get_backend(backend_name).map_or(
         Err(RedisError::String(format!(
             "Backend '{}' does not exists or not yet loaded",
             backend_name
@@ -1764,8 +1808,9 @@ macro_rules! get_allocator {
 mod gears_module {
     use super::*;
     use config::{
-        GEARS_BOX_ADDRESS, REMOTE_TASK_DEFAULT_TIMEOUT, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
-        V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY,
+        GEARS_BOX_ADDRESS, REMOTE_TASK_DEFAULT_TIMEOUT, V8_DEBUG_SERVER_ADDRESS,
+        V8_LIBRARY_INITIAL_MEMORY_LIMIT, V8_LIBRARY_INITIAL_MEMORY_USAGE,
+        V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY,
     };
     use rdb::REDIS_GEARS_TYPE;
     use redis_module::configuration::ConfigurationFlags;
@@ -1831,6 +1876,7 @@ mod gears_module {
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],
                 ["v8-plugin-path", &*V8_PLUGIN_PATH , "libredisgears_v8_plugin.so", ConfigurationFlags::IMMUTABLE, None],
                 ["v8-flags", &*V8_FLAGS, "'--noexpose-wasm'", ConfigurationFlags::IMMUTABLE, None],
+                ["v8-debug-server-address", &*V8_DEBUG_SERVER_ADDRESS, "127.0.0.1:9005", ConfigurationFlags::IMMUTABLE, None],
             ],
             bool: [
                 ["enable-debug-command", &*ENABLE_DEBUG_COMMAND , false, ConfigurationFlags::IMMUTABLE, None],

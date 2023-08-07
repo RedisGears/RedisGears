@@ -342,7 +342,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 };
 
                 let isolate_scope = script_ctx.isolate.enter();
-                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
+                let ctx_scope = script_ctx.context.enter(&isolate_scope);
 
                 let resolver = resolver.take_local(&isolate_scope).as_resolver();
                 match result {
@@ -412,7 +412,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 };
 
                 let isolate_scope = script_ctx.isolate.enter();
-                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
+                let ctx_scope = script_ctx.context.enter(&isolate_scope);
 
                 let resolver = resolver.take_local(&isolate_scope).as_resolver();
                 let results: Vec<V8LocalValue> = results.into_iter().map(|v| {
@@ -554,7 +554,7 @@ fn add_call_function(
                             }
                         };
                         let isolate_scope = script_ctx_ref.isolate.enter();
-                        let ctx_scope = script_ctx_ref.ctx.enter(&isolate_scope);
+                        let ctx_scope = script_ctx_ref.context.enter(&isolate_scope);
 
                         let resolver = persisted_resolver.take_local(&isolate_scope).as_resolver();
                         let res = call_result_to_js_object(
@@ -720,7 +720,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
                 .compiled_library_api
                 .run_on_background(Box::new(move || {
                     let isolate_scope = new_script_ctx_ref.isolate.enter();
-                    let ctx_scope = new_script_ctx_ref.ctx.enter(&isolate_scope);
+                    let ctx_scope = new_script_ctx_ref.context.enter(&isolate_scope);
                     let trycatch = isolate_scope.new_try_catch();
 
                     let background_client = get_backgrounnd_client(
@@ -1340,7 +1340,7 @@ pub(crate) fn initialize_globals_1_0(
                     }
                 };
                 let isolate_scope = script_ctx.isolate.enter();
-                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
+                let ctx_scope = script_ctx.context.enter(&isolate_scope);
                 let trycatch = isolate_scope.new_try_catch();
 
                 let mut args = Vec::new();
@@ -1509,7 +1509,7 @@ pub(crate) fn initialize_globals_1_0(
                                     };
                                 let isolate_scope = new_script_ctx_ref_resolve.isolate.enter();
                                 let ctx_scope =
-                                    new_script_ctx_ref_resolve.ctx.enter(&isolate_scope);
+                                    new_script_ctx_ref_resolve.context.enter(&isolate_scope);
                                 let _trycatch = isolate_scope.new_try_catch();
                                 let res = res.take_local(&isolate_scope);
                                 if let Some(mut v) = resolver_resolve.ref_cell.borrow_mut().take() {
@@ -1556,7 +1556,8 @@ pub(crate) fn initialize_globals_1_0(
                                         }
                                     };
                                 let isolate_scope = new_script_ctx_ref_reject.isolate.enter();
-                                let ctx_scope = new_script_ctx_ref_reject.ctx.enter(&isolate_scope);
+                                let ctx_scope =
+                                    new_script_ctx_ref_reject.context.enter(&isolate_scope);
                                 let _trycatch = isolate_scope.new_try_catch();
                                 let res = res.take_local(&isolate_scope);
                                 if let Some(mut v) = resolver_reject.ref_cell.borrow_mut().take() {

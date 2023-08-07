@@ -5,6 +5,8 @@
  */
 
 use std::alloc::GlobalAlloc;
+use std::any::Any;
+use std::sync::Arc;
 
 use redis_module::RedisValue;
 
@@ -14,6 +16,7 @@ use crate::redisgears_plugin_api::GearsApiError;
 
 use super::load_library_ctx::ModuleInfo;
 use super::prologue::ApiVersion;
+use super::GearsApiResult;
 
 pub trait CompiledLibraryInterface {
     fn log_debug(&self, msg: &str);
@@ -36,6 +39,38 @@ pub enum LibraryFatalFailurePolicy {
     Kill = 1,
 }
 
+/// A payload a [DebuggerBackend] can receive, work with and store.
+/// This type of payload is useful for various backend implementations,
+/// so that those can downcast to their known type, so that that they
+/// can work with it.
+pub type DebuggerBackendPayload = Arc<dyn Any + Send + Sync>;
+/// A type for the script deletion callback. Should be invoked when
+/// the debugger no longer needs the script.
+pub type DebuggerDeleteCallback = Box<dyn FnOnce() -> GearsApiResult>;
+
+/// The trait which the plugins can implement to support the debugging.
+/// The debugging processed is assumed to follow the client-server
+/// architecture, supporting just one client at a time.
+pub trait DebuggerBackend {
+    /// Accepts one single connection of a client. After a successful
+    /// accepting of a connection, the debugger backend may proceed
+    /// by having the [DebuggerBackend::start] method called.
+    fn accept_connection(&mut self) -> GearsApiResult;
+
+    /// Starts the main loop of the debugger server. A connection is
+    /// expected to have been established prior to calling this
+    /// method.
+    fn start(
+        &mut self,
+        backend: &mut Box<dyn BackendCtxInterfaceInitialised>,
+        payload: DebuggerBackendPayload,
+    ) -> GearsApiResult;
+
+    /// Returns a human-readable string, explaining how to connect to
+    /// the server.
+    fn get_connection_hints(&self) -> Option<String>;
+}
+
 pub struct BackendCtx {
     pub allocator: &'static dyn GlobalAlloc,
     pub log_info: Box<dyn Fn(&str) + 'static>,
@@ -56,9 +91,12 @@ pub struct BackendCtx {
 /// The trait which is only implemented for a successfully initialised
 /// backend.
 pub trait BackendCtxInterfaceInitialised {
+    /// Returns the name of the backend.
+    fn get_name(&self) -> &'static str;
     fn get_version(&self) -> String;
     fn compile_library(
         &mut self,
+        debug: bool,
         module_name: &str,
         code: &str,
         api_version: ApiVersion,
@@ -67,6 +105,20 @@ pub trait BackendCtxInterfaceInitialised {
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError>;
     fn debug(&mut self, args: &[&str]) -> Result<RedisValue, GearsApiError>;
     fn get_info(&mut self) -> Option<ModuleInfo>;
+
+    /// Starts a server for remote debugging. The server listens to
+    /// connections but doesn't start a debugging session yet. See
+    /// [DebuggerBackend] for more information about debugging.
+    fn start_debug_server(
+        &self,
+        _address: &str,
+    ) -> Result<Box<dyn DebuggerBackend + Send>, GearsApiError> {
+        Err(GearsApiError::new(format!(
+            "Debugging isn't implemented for this backend: {}, {}",
+            self.get_name(),
+            self.get_version()
+        )))
+    }
 }
 
 pub trait BackendCtxInterfaceUninitialised {
@@ -84,5 +136,6 @@ pub trait BackendCtxInterfaceUninitialised {
     /// a successfully initialised instance.
     fn initialize(
         self: Box<Self>,
+        logger: &'static dyn log::Log,
     ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError>;
 }

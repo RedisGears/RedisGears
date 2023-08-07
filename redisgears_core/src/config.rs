@@ -144,4 +144,7 @@ lazy_static! {
     /// This basically means that we might bypass the `V8_MAX_MEMORY` configuration by at most
     /// `V8_LIBRARY_MEMORY_USAGE_DELTA`.
     pub(crate) static ref V8_LIBRARY_MEMORY_USAGE_DELTA: AtomicI64 = AtomicI64::default();
+
+    /// The V8 inspector debug server address.
+    pub(crate) static ref V8_DEBUG_SERVER_ADDRESS: RedisGILGuard<String> = RedisGILGuard::default();
 }

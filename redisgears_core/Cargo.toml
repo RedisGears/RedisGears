@@ -31,7 +31,7 @@ serde_derive = "=1.0.171"
 
 [build-dependencies]
 regex = "1"
-clap = "~2"
+clap = { version = "4", features = ["cargo"]}
 os_info = { version = "3", default-features = false }
 
 [lib]
