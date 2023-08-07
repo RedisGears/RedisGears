@@ -6,7 +6,7 @@ description: >
     Get started with triggers and functions
 ---
 
-Make sure that you have [Redis Stack installed](/docs/getting-started/install-stack/) and running. Alternatively, you can create a [free Redis Cloud account](https://redis.com/try-free/).The triggers and functions preview is available in the fixed subscription plan for the Google Cloud Asia Pacific (Tokyo) and AWS Asia Pacific (Singapore) regions.
+Make sure that you have [Redis Stack installed](/docs/getting-started/install-stack/) and running. Alternatively, you can create a [free Redis Cloud account](https://redis.com/try-free/). The triggers and functions preview is available in the fixed subscription plan for the Google Cloud Asia Pacific (Tokyo) and AWS Asia Pacific (Singapore) regions.
 
 ## Connect Redis Stack
 
