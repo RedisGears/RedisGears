@@ -10,10 +10,10 @@ By default, triggers and functions will decode all data as a string and will rai
 
 1. Binary function arguments
 2. Binary command results
-3. Binary key names on [KeySpace triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/keyspace_triggers/)
+3. Binary key names on [keyspace triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/keyspace_triggers/)
 4. Binary data on [stream triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/stream_triggers/)
 
-### Binary Function Arguments
+### Binary function arguments
 
 It is possible to instruct triggers and functions not to decode function arguments as `JS` `Strings` using the [redis.functionFlags.RAW_ARGUMENTS](/docs/interact/programmability/triggers-and-functions/concepts/function_flags/) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
 
@@ -40,7 +40,7 @@ The above example will allow us to set `key` and `val` even if those are binary 
 
 Notice that the `call` function also accepts `JS` `ArrayBuffer` arguments.
 
-### Binary Command Results
+### Binary command results
 
 Getting function arguments as binary data is not enough. We might want to read binary data from a Redis key. In order to do this we can use the `callRaw` function, which will not decode the result as a `JS` `String` and instead will return the result as a `JS` `ArrayBuffer`. Example:
 
@@ -67,9 +67,9 @@ OK
 
 Notice that a `JS` `ArrayBuffer` can be returned by a function, it will be returned to the client as `bulk string`.
 
-### Binary Keys Names On Database Triggers
+### Binary keys names on database triggers
 
-On [KeySpace triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/keyspace_triggers/), if the key name that triggered the event is binary, the `data.key` field will be NULL. The `data.key_raw` field is always provided as a `JS` `ArrayBuffer` and can be used as in the following example:
+On [keyspace triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/keyspace_triggers/), if the key name that triggered the event is binary, the `data.key` field will be NULL. The `data.key_raw` field is always provided as a `JS` `ArrayBuffer` and can be used as in the following example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -105,9 +105,9 @@ OK
 3) "\xaa"
 ```
 
-For more information see [KeySpace triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/keyspace_triggers/).
+For more information see [keyspace triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/keyspace_triggers/).
 
-### Binary Data on Stream Consumers
+### Binary data on stream consumers
 
 On [stream triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/stream_triggers/), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is always provided as a `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case, it is possible to use `data.record` (which always exists) and contains the data as a `JS` `ArrayBuffer`. Example:
 

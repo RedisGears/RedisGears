@@ -50,7 +50,7 @@ redis-cli -x TFUNCTION LOAD REPLACE < ./main.js
 
 Functions within Redis can respond to events using key space triggers. While the majority of these events are initiated by command invocations, they also include events that occur when a key expires or is removed from the database.
 
-For the full list of supported events, please refer to the [Redis Key Space notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands/?utm_source=redis\&utm_medium=app\&utm_campaign=redisinsight_triggers_and_functions_guide).
+For the full list of supported events, please refer to the [Redis keyspace notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands/?utm_source=redis\&utm_medium=app\&utm_campaign=redisinsight_triggers_and_functions_guide).
 
 The following code creates a new key space trigger that adds a new field to a hash with the latest update time. 
 

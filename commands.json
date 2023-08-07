@@ -1,6 +1,6 @@
 {
     "TFCALL": {
-        "summary": "Invoke a function",
+        "summary": "Invoke a JavaScript function",
         "since": "2.0.0",
         "group": "triggers_and_functions",
         "complexity": "Depends on the function that is executed.",
@@ -29,7 +29,7 @@
         ]
     },
     "TFCALLASYNC": {
-        "summary": "Invoke an async function",
+        "summary": "Invoke an asynchronous JavaScript function",
         "since": "2.0.0",
         "group": "triggers_and_functions",
         "complexity": "Depends on the function that is executed.",
@@ -58,7 +58,7 @@
         ]
     },
     "TFUNCTION DELETE": {
-        "summary": "Delete a library from Triggers and Functions by name",
+        "summary": "Delete a JavaScript library from Redis by name",
         "since": "2.0.0",
         "group": "triggers_and_functions",
         "complexity": "O(1)",
@@ -71,7 +71,7 @@
         ]
     },
     "TFUNCTION LOAD": {
-        "summary": "Load a new library into Triggers and Functions",
+        "summary": "Load a new JavaScript library into Redis",
         "since": "2.0.0",
         "group": "triggers_and_functions",
         "complexity": "O(1)",
@@ -98,10 +98,10 @@
         ]
     },
     "TFUNCTION LIST": {
-                "summary": "List all libraries loaded into Triggers and Functions",
+                "summary": "List all JavaScript libraries loaded into Redis",
                 "since": "2.0.0",
                 "group": "triggers_and_functions",
-                "complexity": "O(N) where N is the number of libraries loaded into Triggers and Functions",
+                "complexity": "O(N) where N is the number of libraries loaded into Redis",
                 "arguments": [
                     {
                         "name": "library-name",

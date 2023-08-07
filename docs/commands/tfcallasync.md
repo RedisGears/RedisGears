@@ -4,14 +4,14 @@ syntax: |
     TFCALLASYNC <library name>.<function name> <number of keys> [<key1> ... <keyn>] [<arg1> ... <argn>]
 ---
 
-Invoke an async function (coroutine).
+Invoke an asynchronous JavaScript function (coroutine).
 
 ## Required arguments
 
 <details open>
 <summary><code>library name</code></summary>
 
-The name of the library that contains the function.
+The name of the JavaScript library that contains the function.
 </details>
 
 <details open>
