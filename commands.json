@@ -2,7 +2,7 @@
     "TFCALL": {
         "summary": "Invoke a function",
         "since": "2.0.0",
-        "group": "triggers-and-functions",
+        "group": "triggers_and_functions",
         "complexity": "Depends on the function that is executed.",
         "arguments": [
             {
@@ -31,7 +31,7 @@
     "TFCALLASYNC": {
         "summary": "Invoke an async function",
         "since": "2.0.0",
-        "group": "triggers-and-functions",
+        "group": "triggers_and_functions",
         "complexity": "Depends on the function that is executed.",
         "arguments": [
             {
@@ -60,7 +60,7 @@
     "TFUNCTION DELETE": {
         "summary": "Delete a library from Triggers and Functions by name",
         "since": "2.0.0",
-        "group": "triggers-and-functions",
+        "group": "triggers_and_functions",
         "complexity": "O(1)",
         "arguments": [
             {
@@ -73,7 +73,7 @@
     "TFUNCTION LOAD": {
         "summary": "Load a new library into Triggers and Functions",
         "since": "2.0.0",
-        "group": "triggers-and-functions",
+        "group": "triggers_and_functions",
         "complexity": "O(1)",
         "arguments": [
             {
@@ -100,7 +100,7 @@
     "TFUNCTION LIST": {
                 "summary": "List all libraries loaded into Triggers and Functions",
                 "since": "2.0.0",
-                "group": "triggers-and-functions",
+                "group": "triggers_and_functions",
                 "complexity": "O(N) where N is the number of libraries loaded into Triggers and Functions",
                 "arguments": [
                     {
