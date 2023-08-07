@@ -58,7 +58,9 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     stream_ctx::StreamCtxInterface, GearsApiError,
 };
 
-use redisgears_plugin_api::redisgears_plugin_api::{FunctionCallResult, RefCellWrapper};
+use redisgears_plugin_api::redisgears_plugin_api::{
+    FunctionCallResult, GearsApiResult, RefCellWrapper,
+};
 
 use crate::run_ctx::RunCtx;
 
@@ -561,10 +563,10 @@ impl DbPolicy {
 /// a remote debugger attached.
 #[derive(Debug)]
 struct DebuggerServer {
-    join_handle: std::thread::JoinHandle<Result<(), RedisError>>,
+    join_handle: std::thread::JoinHandle<GearsApiResult>,
 }
-impl From<std::thread::JoinHandle<Result<(), RedisError>>> for DebuggerServer {
-    fn from(join_handle: std::thread::JoinHandle<Result<(), RedisError>>) -> Self {
+impl From<std::thread::JoinHandle<GearsApiResult>> for DebuggerServer {
+    fn from(join_handle: std::thread::JoinHandle<GearsApiResult>) -> Self {
         Self { join_handle }
     }
 }
