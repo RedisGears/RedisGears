@@ -166,7 +166,7 @@ QUEUED
 
 What just happened? `name_jerry` was incremented twice while `name_tom` was not incremented at all. This happened because, in case of a `multi`/`exec` or Lua function, the notifications are fired at the end of the transaction, so all the clients will receive notifications of the last value written, which is `jerry`.
 
-To fix the code and still get the expected results even on `multi`/`exec`. Triggers and Functions allow you to specify an optional callback that will run exactly when the notification happened (and not at the end of the transaction). The constraint on this callback is that it can only **read** data without performing any writes. The new code will be as follow:
+To fix the code and still get the expected results even on `multi`/`exec`. Triggers and functions allows you to specify an optional callback that will run exactly when the notification happened (and not at the end of the transaction). The constraint on this callback is that it can only **read** data without performing any writes. The new code will be as follow:
 
 ```js
 #!js api_version=1.0 name=lib

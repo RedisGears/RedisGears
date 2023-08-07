@@ -3,12 +3,12 @@ title: "Cluster Support"
 linkTitle: "Cluster Support"
 weight: 4
 description: >
-    Cluster support for Triggers and Functions
+    Cluster support for triggers and functions
 ---
 
 **Notice**: On an OSS cluster, before executing any gears function, you must send a `REDISGEARS_2.REFRESHCLUSTER` command to all the shards so that they will be aware of the cluster topology. Without this step, each shard will act as a single OSS instance.
 
-Triggers and Functions support cross-shard operation on Redis clusters. This means that it is possible to call a function that will be invoked on another shard. We call such a function a remote function.
+Triggers and functions support cross-shard operation on Redis clusters. This means that it is possible to call a function that will be invoked on another shard. We call such a function a remote function.
 
 Just like local functions, remote function must be declared on library load time using `redis.registerClusterFunction` API. The following example declares a remote function that returns the number of keys on the shard:
 
