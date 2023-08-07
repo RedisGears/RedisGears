@@ -6,10 +6,20 @@ description: >
     Get started with triggers and functions
 ---
 
+Make sure that you have [Redis Stack installed](/docs/getting-started/install-stack/) and running. Alternatively, you can create a [free Redis Cloud account](https://redis.com/try-free/).The triggers and functions preview is available in the fixed subscription plan for the Google Cloud Asia Pacific (Tokyo) and AWS Asia Pacific (Singapore) regions.
+
+## Connect Redis Stack
+
+```Shell
+> redis-cli -h 127.0.0.1 -p 6379
+```
+
+## Load a library
+
 Use the `TFUNCION LOAD` command to create a new library in your Redis instance.
 
 ```Shell
-127.0.0.1:6370> TFUNCTION LOAD "#!js api_version=1.0 name=myFirstLibrary\n redis.registerFunction('hello', ()=>{ return 'Hello World'})"
+127.0.0.1:6379> TFUNCTION LOAD "#!js api_version=1.0 name=myFirstLibrary\n redis.registerFunction('hello', ()=>{ return 'Hello World'})"
 OK
 ```
 
@@ -17,14 +27,14 @@ When the library is created successfully, an `OK` response is returned.
 The `TFCALL` command is used to execute the JavaScript Function. If the command fails, an error will be returned.
 
 ```Shell
-127.0.0.1:6370> TFCALL myFirstLibrary.hello 0
+127.0.0.1:6379> TFCALL myFirstLibrary.hello 0
 "Hello World"
 ```
 
 To update the library run the `TFUNCTION LOAD` command with the additional parameter `REPLACE`.
 
 ```Shell
-127.0.0.1:6370> TFUNCTION LOAD REPLACE "#!js api_version=1.0 name=myFirstLibrary\n redis.registerFunction('hello', ()=>{ return 'Hello World updated'})"
+127.0.0.1:6379> TFUNCTION LOAD REPLACE "#!js api_version=1.0 name=myFirstLibrary\n redis.registerFunction('hello', ()=>{ return 'Hello World updated'})"
 OK
 ```
 
