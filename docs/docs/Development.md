@@ -3,10 +3,10 @@ title: "Development"
 linkTitle: "Development"
 weight: 3
 description: >
-  How to develop Triggers and Functions
+  How to develop for triggers and functions
 ---
 
-To aid in the development of new libraries of Triggers and Functions you can use the type declaration files for the Triggers and Functions API. This can be used by your preferred development environment to provide autocompletion and type checking based on the type information. You can install it using the following command:
+To aid in the development of new libraries of triggers and functions you can use the type declaration files for the triggers and functions API. This can be used by your preferred development environment to provide autocompletion and type checking based on the type information. You can install it using the following command:
 
 ```bash
 npm install https://gitpkg.now.sh/RedisGears/RedisGears/redisgears_js_api
@@ -22,7 +22,7 @@ Or add it directly as a dependency to your `package.json`:
 
 ## Example project setup
 
-Create an empty directory for your new Triggers and Functions project, `my_first_project`. Navigate to the folder and run the following command:
+Create an empty directory for your new triggers and functions project, `my_first_project`. Navigate to the folder and run the following command:
 
 ```bash
 npm init -y -f

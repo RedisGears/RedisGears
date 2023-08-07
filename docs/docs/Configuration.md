@@ -6,7 +6,7 @@ description: >
     Configure the operation parameters
 ---
 
-Triggers and Functions provides configuration options to control its operation. These options can be set when the module is bootstrapped and, in some cases, at runtime.
+Redis Stack's triggers and functions feature provides configuration options to control its operation. These options can be set when the module is bootstrapped and, in some cases, at runtime.
 
 The following sections describe the configuration options and how to set them.
 
@@ -265,7 +265,7 @@ Yes
 
 ## error-verbosity
 
-The `error-verbosity` configuration option controls the verbosity of error messages that will be provided by Triggers and Functions. The higher the value the more verbose the error messages will be (for example, including stack traces and extra information for better analysis and debugging).
+The `error-verbosity` configuration option controls the verbosity of error messages that will be provided by triggers and functions. The higher the value the more verbose the error messages will be (for example, including stack traces and extra information for better analysis and debugging).
 
 _Expected Value_
 
