@@ -435,7 +435,7 @@ fn function_load_with_args_with_debugger(
         RedisError::String(format!("Couldn't build the compilation arguments: {e}"))
     })?;
 
-    let (connection_hints_message, mut debugger_server) =
+    let (connection_hints_message, debugger_backend) =
         start_debug_server_for_library(address, &compilation_arguments)
             .map(|debugger_server| {
                 let connection_hints_message = RedisValue::VerbatimString((
@@ -454,45 +454,10 @@ fn function_load_with_args_with_debugger(
 
     thread_ctx.reply(Ok(connection_hints_message));
 
-    let library_name = compilation_arguments.get_library_name()?;
-
-    let join_handle = debugger_server
-        .accept_connection()
-        .map_err(|e| RedisError::String(e.to_string()))
-        .map(
-            |_| -> GearsApiResult<std::thread::JoinHandle<GearsApiResult>> {
-                // let mut compiled_library_data = compilation_arguments.compile(true)?;
-                // let backend_name = compiled_library_data.meta_data.engine.clone();
-                // let debug_payload = compiled_library_data
-                //     .library_ctx_interface
-                //     .get_debug_payload()?;
-                let gears_library = function_load_internal(
-                    context,
-                    compilation_arguments.clone(),
-                    true,
-                    false,
-                    false,
-                )
-                .map_err(GearsApiError::new)?;
-                let backend_name = gears_library.get_backend_name().to_owned();
-                let debug_payload = gears_library.lib_ctx.get_debug_payload()?;
-
-                std::thread::Builder::new()
-                    .name(format!("DebuggerThread-{library_name}"))
-                    .spawn(move || {
-                        let backend =
-                            get_backends_mut().get_mut(&backend_name).ok_or_else(|| {
-                                GearsApiError::new(format!("Unknown backend {backend_name}"))
-                            })?;
-                        debugger_server.start(backend, debug_payload)
-                    })
-                    .map_err(|e| {
-                        GearsApiError::new(format!("Couldn't start a debugger thread: {e}"))
-                    })
-            },
-        )?;
-
-    let _ = global_debugger_server.insert(join_handle?.into());
+    let _ = global_debugger_server.insert(crate::debugging::Server::prepare(
+        compilation_arguments,
+        debugger_backend,
+    ));
 
     Ok(())
 }

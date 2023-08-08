@@ -369,21 +369,12 @@ pub(crate) fn bypass_memory_limit() -> bool {
 }
 
 struct ScriptDebuggerSession {
-    web_socket: WebSocketServer,
+    session: DebuggerSession,
     script: Arc<V8ScriptCtx>,
 }
 
 impl ScriptDebuggerSession {
-    fn new(web_socket: WebSocketServer, script: Arc<V8ScriptCtx>) -> Self {
-        Self { web_socket, script }
-    }
-
-    fn start_processing_messages(
-        self,
-        backend: &mut Box<dyn BackendCtxInterfaceInitialised>,
-    ) -> GearsApiResult {
-        let web_socket = self.web_socket;
-        let script = self.script;
+    fn new(web_socket: WebSocketServer, script: Arc<V8ScriptCtx>) -> GearsApiResult<Self> {
         let inspector = script
             .inspector
             .clone()
@@ -394,28 +385,26 @@ impl ScriptDebuggerSession {
         let session = DebuggerSession::new(web_socket, inspector)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
 
-        session
-            .process_messages()
+        Ok(Self {
+            session,
+            script: script.clone(),
+        })
+    }
+
+    fn process_events(&self) -> GearsApiResult {
+        let isolate_scope = self.script.isolate.enter();
+        let _context_scope = self.script.context.enter(&isolate_scope);
+
+        self.session
+            .process_messages_with_timeout(std::time::Duration::from_millis(10))
             .map_err(|e| GearsApiError::new(e.to_string()))
-
-        // let process_messages = Box::new(move |inspector, debug_loader| -> GearsApiResult {
-        //     let session = DebuggerSession::new(web_socket, inspector)
-        //         .map_err(|e| GearsApiError::new(e.to_string()))?;
-
-        //     session
-        //         .process_messages()
-        //         .map_err(|e| GearsApiError::new(e.to_string()))
-        // });
-        // Arc::into_inner(script)
-        //     .ok_or_else(|| GearsApiError::new("Couldn't move out from the V8ScriptCtx."))?
-        //     .load_library_and_attach_debugger(backend, process_messages)
     }
 }
 
 impl std::fmt::Debug for ScriptDebuggerSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DebuggerSession")
-            .field("web_socket", &self.web_socket)
+            .field("session", &self.session)
             .field("script", &self.script)
             .finish()
     }
@@ -435,6 +424,9 @@ enum DebuggerServer {
     /// A connection has been established, but the debugging session
     /// hasn't been started yet.
     Established(Box<Option<WebSocketServer>>),
+    /// A connection has been established and the debugging session is
+    /// started.
+    Started(Box<ScriptDebuggerSession>),
 }
 
 // TODO remove
@@ -465,12 +457,8 @@ impl DebuggerBackend for DebuggerServer {
         Ok(())
     }
 
-    fn start(
-        &mut self,
-        backend: &mut Box<dyn BackendCtxInterfaceInitialised>,
-        payload: DebuggerBackendPayload,
-    ) -> GearsApiResult {
-        match self {
+    fn start_session(&mut self, payload: DebuggerBackendPayload) -> GearsApiResult {
+        let session = match self {
             Self::Established(e) => {
                 let server = e.take().ok_or_else(|| {
                     GearsApiError::new("The debugger session hasn't been established yet.")
@@ -479,13 +467,23 @@ impl DebuggerBackend for DebuggerServer {
                 let script = payload.downcast::<V8ScriptCtx>().map_err(|e| {
                     GearsApiError::new(format!("Couldn't downcast to V8ScriptCtx: {e:?}"))
                 })?;
-                let session = ScriptDebuggerSession::new(server, script);
-                session.start_processing_messages(backend)?;
-
-                Ok(())
+                Box::new(ScriptDebuggerSession::new(server, script)?)
             }
+            _ => {
+                return Err(GearsApiError::new(
+                    "The debugger session hasn't been established yet.",
+                ))
+            }
+        };
+        std::mem::swap(self, &mut Self::Started(session));
+        Ok(())
+    }
+
+    fn process_events(&mut self) -> GearsApiResult {
+        match self {
+            Self::Started(e) => e.process_events(),
             _ => Err(GearsApiError::new(
-                "The debugger session hasn't been established yet.",
+                "The debugger session hasn't started yet.",
             )),
         }
     }
@@ -500,7 +498,12 @@ impl DebuggerBackend for DebuggerServer {
                 .as_ref()
                 .as_ref()
                 .map(|e| e.get_connection_hints().to_string()),
+            Self::Started(session) => Some(session.session.get_connection_hints().to_string()),
         }
+    }
+
+    fn accepted_connection(&self) -> bool {
+        matches!(self, Self::Established(_))
     }
 }
 

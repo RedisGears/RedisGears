@@ -10,6 +10,7 @@
 
 #![deny(missing_docs)]
 
+use function_load_command::CompilationArguments;
 use keys_notifications_ctx::KeySpaceNotificationsCtx;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::{
@@ -89,6 +90,7 @@ mod background_run_ctx;
 mod background_run_scope_guard;
 mod compiled_library_api;
 mod config;
+mod debugging;
 mod function_del_command;
 mod function_list_command;
 mod function_load_command;
@@ -220,6 +222,17 @@ impl GearsFunctionCtx {
     }
 }
 
+impl std::fmt::Debug for GearsFunctionCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GearsFunctionCtx")
+            .field("func", &format!("{:p}", &self.func))
+            .field("flags", &self.flags)
+            .field("is_async", &self.is_async)
+            .field("description", &self.description)
+            .finish()
+    }
+}
+
 /// The gears library runtime context. It contains the live "instance"
 /// of the global library state: all the functions registered and other
 /// state information.
@@ -260,6 +273,24 @@ impl GearsLibraryCtx {
     }
 }
 
+impl std::fmt::Debug for GearsLibraryCtx {
+    fn fmt(&self, mut f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO: add more fields.
+
+        f.debug_struct("GearsLibraryCtx")
+            .field("meta_data", &self.meta_data)
+            .field("functions", &self.functions)
+            // .field("remote_functions", &self.remote_functions)
+            .field("stream_consumers", &self.stream_consumers)
+            // .field("revert_stream_consumers", &self.revert_notifications_consumers)
+            .field("notifications_consumers", &self.notifications_consumers)
+            // .field("revert_notifications_consumers", &self.revert_notifications_consumers)
+            .field("old_lib", &self.old_lib)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 struct GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
     ctx: &'ctx Context,
     gears_lib_ctx: &'lib_ctx mut GearsLibraryCtx,
@@ -275,6 +306,16 @@ impl GearsLibrary {
     /// Returns the backend name used by this library.
     pub(crate) fn get_backend_name(&self) -> &str {
         &self.gears_lib_ctx.meta_data.engine
+    }
+}
+
+impl std::fmt::Debug for GearsLibrary {
+    fn fmt(&self, mut f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GearsLibrary")
+            .field("gears_lib_ctx", &self.gears_lib_ctx)
+            .field("lib_ctx", &format!("{:p}", &self.lib_ctx))
+            .field("compile_lib_internals", &self.compile_lib_internals)
+            .finish()
     }
 }
 
@@ -559,18 +600,6 @@ impl DbPolicy {
     }
 }
 
-/// A debugger server is a thread that executes a user library with
-/// a remote debugger attached.
-#[derive(Debug)]
-struct DebuggerServer {
-    join_handle: std::thread::JoinHandle<GearsApiResult>,
-}
-impl From<std::thread::JoinHandle<GearsApiResult>> for DebuggerServer {
-    fn from(join_handle: std::thread::JoinHandle<GearsApiResult>) -> Self {
-        Self { join_handle }
-    }
-}
-
 struct GlobalCtx {
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
     backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
@@ -588,7 +617,9 @@ struct GlobalCtx {
     db_policy: DbPolicy,
     future_handlers: HashMap<String, Vec<Weak<RedisGILGuard<FutureHandlerContext>>>>,
     avoid_replication_traffic: bool,
-    debugger_server: Mutex<Option<DebuggerServer>>,
+    // TODO: remove the mutex, we don't ever use this object
+    // concurrently.
+    debugger_server: Mutex<Option<debugging::Server>>,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -1592,7 +1623,7 @@ fn on_config_change(ctx: &Context, values: &[&str]) {
 }
 
 /// Will be called by Redis to execute some repeated tasks.
-/// Currently we will clean future handlers that has been finised.
+/// Currently we will clean future handlers that has been finished.
 #[cron_event_handler]
 fn cron_event_handler(ctx: &Context, _hz: u64) {
     let globals = get_globals_mut();
@@ -1622,6 +1653,15 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
         }
     }
     globals.avoid_replication_traffic = ctx.avoid_replication_traffic();
+
+    if let Ok(mut debugger_backend) = globals.debugger_server.lock() {
+        if let Some(debugger_backend) = debugger_backend.as_mut() {
+            // if let Some(debugger_backend) = globals.debugger_server.as_mut() {
+            if let Err(e) = debugger_backend.process_events(ctx) {
+                log::error!("{e}");
+            }
+        }
+    }
 }
 
 pub(crate) fn verify_name(name: &str) -> Result<(), String> {

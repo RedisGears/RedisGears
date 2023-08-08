@@ -57,18 +57,27 @@ pub trait DebuggerBackend {
     /// by having the [DebuggerBackend::start] method called.
     fn accept_connection(&mut self) -> GearsApiResult;
 
-    /// Starts the main loop of the debugger server. A connection is
-    /// expected to have been established prior to calling this
-    /// method.
-    fn start(
-        &mut self,
-        backend: &mut Box<dyn BackendCtxInterfaceInitialised>,
-        payload: DebuggerBackendPayload,
-    ) -> GearsApiResult;
+    /// Starts the debugging session. A connection is expected to have
+    /// been established prior to calling this method.
+    fn start_session(&mut self, payload: DebuggerBackendPayload) -> GearsApiResult;
+
+    /// Processes the events until there are no more events to process.
+    /// It is expected to have this method called repeatedly, until the
+    /// session is stopped.
+    ///
+    /// # Note
+    ///
+    /// The connection must have been established prior to calling this
+    /// method, as well as a debugging session must have been started.
+    fn process_events(&mut self) -> GearsApiResult;
 
     /// Returns a human-readable string, explaining how to connect to
     /// the server.
     fn get_connection_hints(&self) -> Option<String>;
+
+    /// Returns [`true`] if it has previously accepted a client.
+    /// See [`DebuggerBackend::accept_connection`] for more information.
+    fn accepted_connection(&self) -> bool;
 }
 
 pub struct BackendCtx {

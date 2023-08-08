@@ -10,7 +10,7 @@ use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryIn
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use std::collections::LinkedList;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 
 pub(crate) struct CompiledLibraryInternals {
     jobs: Mutex<LinkedList<Box<dyn FnOnce() + Send>>>,
@@ -59,6 +59,23 @@ impl CompiledLibraryInternals {
     pub(crate) fn pending_jobs(&self) -> usize {
         let queue = self.jobs.lock().unwrap();
         queue.len()
+    }
+}
+
+impl std::fmt::Debug for CompiledLibraryInternals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let jobs = match self.jobs.try_lock() {
+            Ok(guard) => guard
+                .iter()
+                .map(|e| format!("{e:p}"))
+                .collect::<Vec<String>>()
+                .join(", "),
+            Err(TryLockError::Poisoned(err)) => err.to_string(),
+            Err(TryLockError::WouldBlock) => "<locked>".to_owned(),
+        };
+        f.debug_struct("CompiledLibraryInternals")
+            .field("jobs", &jobs)
+            .finish()
     }
 }
 
