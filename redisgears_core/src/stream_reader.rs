@@ -598,16 +598,14 @@ where
                 if let Some((consumer_weak, record, consumer_info)) = res {
                     let stream_reader = Arc::clone(&self.stream_reader);
                     let tracked_stream = Arc::clone(&tracked_stream);
-                    ctx.add_post_notification_job(move |ctx| {
-                        send_new_data(
-                            ctx,
-                            tracked_stream,
-                            consumer_weak,
-                            record,
-                            consumer_info,
-                            stream_reader,
-                        );
-                    });
+                    send_new_data(
+                        ctx,
+                        tracked_stream,
+                        consumer_weak,
+                        record,
+                        consumer_info,
+                        stream_reader,
+                    );
                 }
             })
             .collect::<Vec<()>>();
