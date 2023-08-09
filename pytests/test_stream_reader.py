@@ -618,3 +618,59 @@ redis.registerStreamTrigger("consumer", "stream",
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.expect('exists', 'stream:1').equal(False)
     env.assertEqual(slave_conn.execute_command('exists', 'stream:1'), False)
+
+
+@gearsTest()
+def testStreamReaderAppendStreamInsideTheConsumer(env):
+    """#!js api_version=1.0 name=lib
+var data_added = false;
+redis.registerStreamTrigger("consumer", "stream",
+    function(client, data) {
+        if (!data_added) {
+            client.call('xadd', data.stream_name, '*', 'foo1', 'bar1');
+            data_added = true;
+        }
+    },
+    {
+        isStreamTrimmed: false
+    }
+)
+    """
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    env.expect('xlen', 'stream:1').equal(2)
+
+@gearsTest()
+def testStreamReaderAppendStreamInsideGearsFunction(env):
+    """#!js api_version=1.0 name=lib
+var data_added = false;
+redis.registerStreamTrigger("consumer", "stream",
+    function(client, data) {
+        return;
+    },
+    {
+        isStreamTrimmed: true
+    }
+)
+
+redis.registerFunction("test1",
+    function(client) {
+        client.call('xadd', 'stream:1', '*', 'foo', 'bar');
+        client.call('xadd', 'stream:1', '*', 'foo', 'bar');
+        return 'OK';
+    }
+)
+
+redis.registerFunction("test2",
+    function(client) {
+        client.call('xadd', 'stream:1', '*', 'foo', 'bar')
+        client.call('xadd', 'stream:1', '*', 'foo', 'bar')
+        client.call('del', 'stream:1')
+        return 'OK';
+    }
+)
+    """
+    env.expectTfcall('lib', 'test1').equal('OK')
+    env.expect('xlen', 'stream:1').equal(0)
+    env.expectTfcall('lib', 'test2').equal('OK')
+    env.expect('exists', 'stream:1').equal(False)
+

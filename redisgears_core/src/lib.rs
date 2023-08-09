@@ -1404,8 +1404,12 @@ fn function_debug_command(
 
 fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if is_master(ctx) {
-        let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_touched(ctx, event, key);
+        let key = key.to_vec();
+        let event = event.to_owned();
+        ctx.add_post_notification_job(move |ctx| {
+            let stream_ctx = &mut get_globals_mut().stream_ctx;
+            stream_ctx.on_stream_touched(ctx, &event, &key);
+        });
     }
 }
 
