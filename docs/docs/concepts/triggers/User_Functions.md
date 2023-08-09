@@ -1,6 +1,6 @@
 ---
-title: "User Functions"
-linkTitle: "User Functions"
+title: "User functions"
+linkTitle: "User functions"
 weight: 1
 description: >
     Execute JavaScript functions via `TFCALL` or `TFCALLASYNC`

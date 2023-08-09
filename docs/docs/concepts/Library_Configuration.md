@@ -3,10 +3,10 @@ title: "Library configuration"
 linkTitle: "Library configuration"
 weight: 6
 description: >
-    How to use configuration in JavaScript Functions
+    How to use configuration in JavaScript functions
 ---
 
-When writing a library, you may want to provide a loading configuration so that different users can use the same library with slightly different behaviour, without changing the base code. For example, assume you write a library that adds a `__last_updated__` field to a hash (you can see how it can also be done with [KeySpace triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/keyspace_triggers/)), the code will look like this:
+When writing a library, you may want to provide a loading configuration so that different users can use the same library with slightly different behaviour, without changing the base code. For example, assume you write a library that adds a `__last_updated__` field to a hash (you can see how it can also be done with [keyspace triggers](/docs/interact/programmability/triggers-and-functions/concepts/triggers/keyspace_triggers/)), the code will look like this:
 
 ```js
 #!js api_version=1.0 name=lib

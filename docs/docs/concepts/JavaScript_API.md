@@ -194,7 +194,7 @@ client.executeAsync(
 
 
 
-## AsyncClient object
+## Async client object
 
 Background client object that is used to perform background operation on Redis.
 This client is given to any background task that runs as a JS coroutine.

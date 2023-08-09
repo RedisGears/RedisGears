@@ -1,5 +1,5 @@
 ---
-title: "Triggers and functions Examples"
+title: "Triggers and functions examples"
 linkTitle: "Examples"
 weight: 5
 description: >
@@ -10,7 +10,7 @@ Redis Stack's triggers and functions feature enables the detection of changes to
 
 - **Retail**: In the retail sector, a function can be developed to update the inventory immediately upon order receipt. This empowers businesses to accurately predict stock requirements for specific warehouses on any given day.
 - **Travel**: For the travel industry, a trigger can be utilized to detect new flight bookings and efficiently load the relevant information into a queue for different consumers. Services can then leverage this data to provide recommendations for hotels, restaurants, car rental services, and more. Leveraging Redis geometries, powerful recommendation systems can offer localized and personalized suggestions.
-- **Subscription Services**: In the realm of subscription services, employing a keyspace trigger can automatically identify users whose subscriptions have been renewed, seamlessly changing their status to active. Further operations can be performed on these users, such as adding them to a queue for the delivery of notifications or executing additional actions.
+- **Subscription services**: In the realm of subscription services, employing a keyspace trigger can automatically identify users whose subscriptions have been renewed, seamlessly changing their status to active. Further operations can be performed on these users, such as adding them to a queue for the delivery of notifications or executing additional actions.
 
 These examples highlight the practical application of triggers and functions in different industries, showcasing their value in streamlining processes and delivering efficient solutions. 
 
@@ -91,7 +91,7 @@ The function `del_keys` performs an asynchronous batch scan of all the keys in t
 TFCALLASYNC utils.del_keys 0 "user:*"
 ```
 
-## Automatic Expire
+## Automatic expiration
 
 Sometimes it is useful to enforce expiration time for data that by nature is short-lived. An example could be session data, or authentication tokens. A trigger fits the use case and can execute a function that sets the desired TTL.
 

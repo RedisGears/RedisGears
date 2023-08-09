@@ -1,6 +1,6 @@
 ---
-title: "Cluster Support"
-linkTitle: "Cluster Support"
+title: "Cluster support"
+linkTitle: "Cluster support"
 weight: 4
 description: >
     Cluster support for triggers and functions
@@ -20,7 +20,7 @@ redis.registerClusterFunction("dbsize", async(async_client) => {
 });
 ```
 
-`redis.registerClusterFunction` is passed the remote function name, which will be used later to call the remote function, and the remote function code. The remote function must be a Coroutine (async function) and it is executed in the background on the remote shard. For more information about async function, please refer to [Sync and Async Run](/docs/interact/programmability/triggers-and-functions/concepts/sync_async/) page.
+`redis.registerClusterFunction` is passed the remote function name, which will be used later to call the remote function, and the remote function code. The remote function must be a Coroutine (async function) and it is executed in the background on the remote shard. For more information about async function, please refer to [sync and async](/docs/interact/programmability/triggers-and-functions/concepts/sync_async/) page.
 
 We have couple of options for calling a remote function. These options are exposed through the async client that is given to a Coroutine:
 
@@ -69,7 +69,7 @@ redis.registerAsyncFunction("test", async(async_client) => {
 });
 ```
 
-## Arguments and Results Serialization
+## Arguments and results serialization
 
 It is possible to pass arguments to the remote function. The arguments will be given to the remote function after the `async_client`. The following example shows how to get a value of a key from any shard in the cluster:
 
@@ -96,13 +96,13 @@ The remote function arguments and results are serialized in the following way:
 1. If the argument is of type `ArrayBuffer`, the data will be sent as is.
 2. Otherwise, RedisGears will try to serialize the give arguments (or the return value) as JSON using `JSON.stringify`. A serialization failure will cause an error to be raised.
 
-## Execution Timeout
+## Execution timeout
 
 Remote functions will not be permitted to run forever and will timeout. The timeout period can be configured using [remote-task-default-timeout](/docs/interact/programmability/triggers-and-functions/configuration/#remote-task-default-timeout). When using `async_client.runOnShards` API, the timeout will be added as error to the error array. When using `async_client.runOnKey`, a timeout will cause an exception to be raised.
 
-## Remote Function Limitations
+## Remote function limitations
 
-All the limitations listed on [Coroutine](/docs/interact/programmability/triggers-and-functions/concepts/sync_async/) also apply to remote functions. Remote function also come with some extra limitations:
+All the limitations listed on [coroutines](/docs/interact/programmability/triggers-and-functions/concepts/sync_async/) also apply to remote functions. Remote function also come with some extra limitations:
 
 * Remote functions can only perform read operations. An attempt to perform a write operation will result in an error.
 * Remote function are not guaranteed to succeed (if the shard crashed for example). In such cases a timeout error will be given.

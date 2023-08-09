@@ -4,7 +4,7 @@ syntax: |
     RG.FUNCTION DELETE "<library name>" 
 ---
 
-Delete a library from Triggers and Functions.
+Delete a JavaScript library from Redis.
 
 ## Required arguments
 

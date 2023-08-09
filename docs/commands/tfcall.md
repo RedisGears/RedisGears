@@ -11,7 +11,7 @@ Invoke a function.
 <details open>
 <summary><code>library name</code></summary>
 
-The name of the library that contains the function.
+The name of the JavaScript library that contains the function.
 </details>
 
 <details open>

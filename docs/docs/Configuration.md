@@ -10,12 +10,12 @@ Redis Stack's triggers and functions feature provides configuration options to c
 
 The following sections describe the configuration options and how to set them.
 
-## Bootstrap Configuration
+## Bootstrap configuration
 
 You can set your configuration options when the module is loaded.
 When the module is loaded at start time, the module configuration can be defined in the Redis configuration file. When loading the module at runtime the configuration can be given to the `MODULE LOADEX` command. Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
 
-## Runtime Configuration
+## Runtime configuration
 
 You may set certain configuration options at runtime. Setting a configuration at runtime is done using `CONFIG SET` command. Here each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
 

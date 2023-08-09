@@ -1,9 +1,9 @@
 ---
-title: "Sync & Async"
-linkTitle: "Sync & Async"
+title: "Sync and async"
+linkTitle: "Sync and async"
 weight: 3
 description: >
-    Sync and Async Functions
+    Sync and async functions
 ---
 
 By default, each time a function is invoked, it is executed synchronously. This ensures the atomicity property, meaning that no other commands will be executed on Redis while the function is running. The atomicity property offers several advantages:
@@ -96,7 +96,7 @@ redis.registerAsyncFunction('test', async function(async_client, expected_name){
 
 Both implementations return the same result, but the second function runs in the background and blocks Redis just to analyze the next batch of keys that are returned from the `SCAN` command. Other commands will be processed in between `SCAN` batches. Notice that the coroutine approach allows the key space to be changed while the scanning it. The function writer will need to decide if this is acceptable.
 
-# Start Sync and Move Async
+# Start sync and move to async
 
 The previous example, although functional, has a drawback in terms of performance. Even though Redis is not blocked, it still takes time to return the reply to the user. However, if we modify the requirement slightly and agree to obtain an approximate value, we can achieve much better performance in most cases. This can be done by implementing result caching using a key named `<name>_count` and setting an expiration time on that key, which triggers recalculation of the value periodically. Here's the updated code:
 
@@ -185,7 +185,7 @@ redis.registerAsyncFunction('test', function(client, expected_name){
 
 **Also notice** it is not always possible to wait for a promise to be resolved. If the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such cases the client will get an error. It is possible to check if blocking the client is allowed using the `client.isBlockAllowed()` function, which will return `true` if it is OK to wait for a promise to be resolved and `false` if it is not possible.
 
-# Call Blocking Commands
+# Call blocking commands
 
 Redis has a few commands that blocks the client and executed asynchronously when some condition holds (commands like [blpop](https://redis.io/commands/blpop/)). In general, such commands are not suppose to be called inside a script and calling them will result in running their none blocking logic. For example, [blpop](https://redis.io/commands/blpop/) will basically runs lpop and return empty result if the list it empty.
 
@@ -213,7 +213,7 @@ RedisGears also provided `client.callAsyncRaw` API, which is the same as `client
 
 **Notice**: There is no guarantee when the promise returned from `client.callAsyn` will be resolved. So the **function writer should not make any assumption about atomicity guarantees.**
 
-# Fail Blocking the Redis
+# Block Redis failure
 
 Blocking Redis might fail for a few reasons:
 
@@ -223,7 +223,7 @@ Blocking Redis might fail for a few reasons:
 
 The failure will result in an exception that the function writer can choose to handle or throw it to be caught by triggers and functions.
 
-# Block Redis Timeout
+# Block Redis timeout
 
 Blocking Redis for a long time is discouraged and is considered an unsafe operation. The triggers and functions feature attempts to protect the function writer and will time out the blocking function if it continues for too long. The timeout can be set as a [module configuration](/docs/interact/programmability/triggers-and-functions/configuration/) along side the fatal failure policy that indicates how to handle the timeout. Policies can be one of the following:
 
