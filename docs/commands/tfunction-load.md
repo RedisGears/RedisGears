@@ -4,7 +4,7 @@ syntax: |
     TFUNCTION LOAD [REPLACE] [CONFIG <config>] "<library code>" 
 ---
 
-Load a new library to Triggers and Functions.
+Load a new JavaScript library into Redis.
 
 ## Required arguments
 
@@ -19,7 +19,7 @@ The library code.
 <details open>
 <summary><code>replace</code></summary>
 
-Instructs Triggers and Functions to replace the function if it already exists.
+Instructs Redis to replace the function if it already exists.
 </details>
 
 <details open>

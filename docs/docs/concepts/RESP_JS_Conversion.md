@@ -42,7 +42,7 @@ When running Redis commands from within a function using the `client.callRaw` AP
 | `null`            | JS null                                                                                                                                        |
 |                   |                                                                                                                                                |
 
-## JS -> RESP Conversion
+## JavaScript to RESP conversion
 
 | JS type                                                          | RESP2         | RESP3                                  |
 |------------------------------------------------------------------|---------------|----------------------------------------|

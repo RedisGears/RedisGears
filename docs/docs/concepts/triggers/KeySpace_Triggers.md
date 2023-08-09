@@ -1,19 +1,19 @@
 ---
-title: "KeySpace Triggers"
-linkTitle: "KeySpace Triggers"
+title: "Keyspace triggers"
+linkTitle: "Keyspace triggers"
 weight: 2
 description: >
-    Execute a JavaScript function based on a KeySpace notification
+    Execute a JavaScript function based on a keyspace notification
 ---
 
-KeySpace triggers allow you to register a function that will be executed whenever an event occurs in the database. Most events are triggered by command invocations, but there are two special events that can occur independently of a command:
+Keyspace triggers allow you to register a function that will be executed whenever an event occurs in the database. Most events are triggered by command invocations, but there are two special events that can occur independently of a command:
 
 1. Expired: This event is fired when a key expires from the database.
 2. Evicted: This event is fired when a key is evicted from the database.
 
-For a complete list of supported events, please refer to the [Redis Key Space notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands).
+For a complete list of supported events, please refer to the [Redis keyspace notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands).
 
-To register a KeySpace trigger, you need to use the `redis.registerKeySpaceTrigger` API when loading your library. The following example demonstrates how to register a database trigger that adds a "last updated" field whenever a hash key is modified:
+To register a keyspace trigger, you need to use the `redis.registerKeySpaceTrigger` API when loading your library. The following example demonstrates how to register a database trigger that adds a "last updated" field whenever a hash key is modified:
 
 ```js
 #!js api_version=1.0 name=myFirstLibrary
@@ -106,17 +106,17 @@ We can display trigger information using `TFUNCTION LIST` command:
           18) "0"
 ```
 
-## Triggers Guarantees
+## Trigger guarantees
 
 If the callback function passed to the trigger is a `JS` function (not a Coroutine), it is guaranteed that the callback will be invoked atomically along side the operation that caused the trigger; meaning all clients will see the data only after the callback has completed. In addition, it is guaranteed that the effect of the callback will be replicated to the replica and the AOF in a `multi/exec` block together with the command that fired the trigger.
 
-If the callback is a Coroutine, it will be executed in the background and there is no guarantee on where or if it will be executed. The guarantees are the same as described on [Sync and Async invocation](/docs/interact/programmability/triggers-and-functions/concepts/sync_async/).
+If the callback is a Coroutine, it will be executed in the background and there is no guarantee on where or if it will be executed. The guarantees are the same as described on [sync and async invocation](/docs/interact/programmability/triggers-and-functions/concepts/sync_async/).
 
 ## Upgrades
 
 When upgrading existing trigger code using the `REPLACE` option of `TFUNCTION LOAD` command, all trigger parameters can be modified.
 
-## Advanced Usage
+## Advanced usage
 
 For most use cases, the `registerKeySpaceTrigger` API is sufficient. But there are some use cases where you might need a better guarantee on when a trigger will be fired. Let's look at the following example:
 

@@ -11,11 +11,10 @@ bannerChildren: true
 [![discord](https://img.shields.io/discord/697882427875393627?style=flat-square)](https://discord.gg/xTbqgTB)
 [![Github](https://img.shields.io/static/v1?label=&message=repository&color=5961FF&logo=github)](https://github.com/RedisGears/RedisGears/)
 
-# Triggers and functions
+The triggers and functions feature of Redis Stack allows running JavaScript functions inside Redis. These functions can be executed on-demand, by an event-driven trigger, or by a stream processing trigger.
 
-Try out the triggers and functions preview with a [free Redis Cloud account](https://redis.com/try-free/). The preview is available in the fixed subscription plan for the Google Cloud Asia Pacific (Tokyo) and AWS Asia Pacific (Singapore) regions.
+> You can try out the triggers and functions preview with a [free Redis Cloud account](https://redis.com/try-free/). The preview is available in the fixed subscription plan for the Google Cloud Asia Pacific (Tokyo) and AWS Asia Pacific (Singapore) regions.
 
-The triggers and functions feature of Redis Stack provides for running JavaScript functions inside the Redis Process. These functions can be executed on-demand, by an event-driven trigger, or by a stream processing trigger.
 
 ## Quick links
 
