@@ -6,7 +6,9 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 
 use crate::{
-    function_load_command::{function_load_internal, CompilationArguments},
+    function_load_command::{
+        function_compile, function_evaluate_and_store, function_load_internal, CompilationArguments,
+    },
     get_backends_mut, GearsLibrary,
 };
 
@@ -63,19 +65,19 @@ impl Server {
             } => {
                 let library = if let Some(backend) = backend {
                     if backend.accepted_connection() {
-                        let library = function_load_internal(
-                            context,
-                            compilation_arguments.clone(),
-                            true,
-                            false,
-                            false,
-                        )
-                        .map_err(GearsApiError::new)?;
+                        let compiled_function_info =
+                            function_compile(compilation_arguments.clone(), true)
+                                .map_err(GearsApiError::new)?;
 
-                        let debug_payload = library.lib_ctx.get_debug_payload()?;
+                        let debug_payload =
+                            compiled_function_info.library_context.get_debug_payload()?;
 
                         backend.start_session(debug_payload)?;
-                        library
+                        function_evaluate_and_store(context, compiled_function_info, false, false)
+                            .map_err(|e| {
+                            backend.stop_session();
+                            GearsApiError::new(e)
+                        })?
                     } else {
                         return Err(GearsApiError::new("The debugger will not compile a script until there is a client connection accepted."));
                     }

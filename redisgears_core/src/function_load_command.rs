@@ -215,21 +215,18 @@ fn compile_library(
     })
 }
 
-pub(crate) fn function_load_internal(
-    ctx: &Context,
-    compilation_arguments: CompilationArguments,
-    debug: bool,
+/// Evaluates the compiled function code and if everything is okay,
+/// store the compiled and evaluated script within the global storage.
+pub(crate) fn function_evaluate_and_store(
+    context: &Context,
+    compiled_function_info: CompiledFunctionInfo,
     upgrade: bool,
     is_loading_rdb: bool,
 ) -> Result<Arc<GearsLibrary>, String> {
-    let compiled_library_data = compilation_arguments
-        .compile(debug)
-        .map_err(|e| format!("Failed library compilation: {}", e.get_msg()))?;
-    let (meta_data, lib_ctx, compile_lib_internals) = (
-        compiled_library_data.meta_data,
-        compiled_library_data.library_ctx_interface,
-        compiled_library_data.compiled_library_internals,
-    );
+    let meta_data = compiled_function_info.meta_data;
+    let lib_ctx = compiled_function_info.library_context;
+    let compile_lib_internals = compiled_function_info.internals;
+
     let mut libraries = get_libraries();
     let old_lib = libraries.remove(&meta_data.name);
     if !upgrade {
@@ -240,7 +237,7 @@ pub(crate) fn function_load_internal(
         }
     }
     let mut gears_library_ctx = GearsLibraryCtx::new(Arc::new(meta_data), old_lib);
-    let res = lib_ctx.load_library(&gears_library_ctx.get_loader(ctx), is_loading_rdb);
+    let res = lib_ctx.load_library(&gears_library_ctx.get_loader(context), is_loading_rdb);
     if let Err(err) = res {
         function_load_revert(gears_library_ctx, &mut libraries);
 
@@ -267,6 +264,44 @@ pub(crate) fn function_load_internal(
         gears_library.clone(),
     );
     Ok(gears_library)
+}
+
+pub(crate) struct CompiledFunctionInfo {
+    pub(crate) meta_data: GearsLibraryMetaData,
+    pub(crate) library_context: Box<dyn LibraryCtxInterface>,
+    pub(crate) internals: Arc<CompiledLibraryInternals>,
+}
+
+/// Compiles the script code but does not evaluate it.
+pub(crate) fn function_compile(
+    compilation_arguments: CompilationArguments,
+    debug: bool,
+) -> Result<CompiledFunctionInfo, String> {
+    let compiled_library_data = compilation_arguments
+        .compile(debug)
+        .map_err(|e| format!("Failed library compilation: {}", e.get_msg()))?;
+    let (meta_data, library_context, internals) = (
+        compiled_library_data.meta_data,
+        compiled_library_data.library_ctx_interface,
+        compiled_library_data.compiled_library_internals,
+    );
+
+    Ok(CompiledFunctionInfo {
+        meta_data,
+        library_context,
+        internals,
+    })
+}
+
+pub(crate) fn function_load_internal(
+    context: &Context,
+    compilation_arguments: CompilationArguments,
+    debug: bool,
+    upgrade: bool,
+    is_loading_rdb: bool,
+) -> Result<Arc<GearsLibrary>, String> {
+    let compiled_function_info = function_compile(compilation_arguments, debug)?;
+    function_evaluate_and_store(context, compiled_function_info, upgrade, is_loading_rdb)
 }
 
 fn get_args_values(

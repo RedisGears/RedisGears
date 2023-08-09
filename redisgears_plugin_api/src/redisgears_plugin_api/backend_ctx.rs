@@ -61,6 +61,9 @@ pub trait DebuggerBackend {
     /// been established prior to calling this method.
     fn start_session(&mut self, payload: DebuggerBackendPayload) -> GearsApiResult;
 
+    /// Stops the session that has been started.
+    fn stop_session(&mut self);
+
     /// Processes the events until there are no more events to process.
     /// It is expected to have this method called repeatedly, until the
     /// session is stopped.

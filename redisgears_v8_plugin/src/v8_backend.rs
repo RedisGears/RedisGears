@@ -6,7 +6,6 @@
 
 use bitflags::bitflags;
 use log::{Metadata, Record};
-use redis_module::logging::log;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
 use redisgears_macros_internals::get_allow_deny_lists;
@@ -37,8 +36,6 @@ use crate::v8_script_ctx::V8LibraryCtx;
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
-use std::str;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -399,6 +396,10 @@ impl ScriptDebuggerSession {
             .process_messages_with_timeout(std::time::Duration::from_millis(10))
             .map_err(|e| GearsApiError::new(e.to_string()))
     }
+
+    fn stop(&self) {
+        self.session.stop();
+    }
 }
 
 impl std::fmt::Debug for ScriptDebuggerSession {
@@ -477,6 +478,12 @@ impl DebuggerBackend for DebuggerServer {
         };
         std::mem::swap(self, &mut Self::Started(session));
         Ok(())
+    }
+
+    fn stop_session(&mut self) {
+        if let Self::Started(session) = self {
+            session.stop();
+        }
     }
 
     fn process_events(&mut self) -> GearsApiResult {
@@ -715,7 +722,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
     fn compile_library(
         &mut self,
-        debug: bool,
+        _debug: bool,
         module_name: &str,
         code: &str,
         api_version: ApiVersion,
