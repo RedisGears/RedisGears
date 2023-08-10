@@ -216,10 +216,10 @@ fn compile_library(
 }
 
 /// Evaluates the compiled function code and if everything is okay,
-/// store the compiled and evaluated script within the global storage.
+/// stores the compiled and evaluated script within the global storage.
 pub(crate) fn function_evaluate_and_store(
     context: &Context,
-    compiled_function_info: CompiledFunctionInfo,
+    compiled_function_info: CompiledLibraryInfo,
     upgrade: bool,
     is_loading_rdb: bool,
 ) -> Result<Arc<GearsLibrary>, String> {
@@ -266,7 +266,8 @@ pub(crate) fn function_evaluate_and_store(
     Ok(gears_library)
 }
 
-pub(crate) struct CompiledFunctionInfo {
+/// Contains the information of a compiled library.
+pub(crate) struct CompiledLibraryInfo {
     pub(crate) meta_data: GearsLibraryMetaData,
     pub(crate) library_context: Box<dyn LibraryCtxInterface>,
     pub(crate) internals: Arc<CompiledLibraryInternals>,
@@ -276,17 +277,17 @@ pub(crate) struct CompiledFunctionInfo {
 pub(crate) fn function_compile(
     compilation_arguments: CompilationArguments,
     debug: bool,
-) -> Result<CompiledFunctionInfo, String> {
+) -> Result<CompiledLibraryInfo, String> {
     let compiled_library_data = compilation_arguments
         .compile(debug)
-        .map_err(|e| format!("Failed library compilation: {}", e.get_msg()))?;
+        .map_err(|e| format!("Failed to compile library: {}", e.get_msg()))?;
     let (meta_data, library_context, internals) = (
         compiled_library_data.meta_data,
         compiled_library_data.library_ctx_interface,
         compiled_library_data.compiled_library_internals,
     );
 
-    Ok(CompiledFunctionInfo {
+    Ok(CompiledLibraryInfo {
         meta_data,
         library_context,
         internals,

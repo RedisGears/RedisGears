@@ -64,7 +64,7 @@ impl Server {
                 backend,
             } => {
                 let library = if let Some(backend) = backend {
-                    if backend.accepted_connection() {
+                    if backend.has_accepted_connection() {
                         let compiled_function_info =
                             function_compile(compilation_arguments.clone(), true)
                                 .map_err(GearsApiError::new)?;
@@ -113,10 +113,30 @@ impl Server {
         self.make_progress()
     }
 
+    /// Stops the server and the session.
+    pub fn stop(&mut self) {
+        match self {
+            Self::AwaitingConnection { backend, .. } => {
+                if let Some(backend) = backend {
+                    backend.stop_session();
+                }
+            }
+            Self::InProgress { backend, .. } => {
+                backend.stop_session();
+            }
+        }
+    }
+
     /// Returns [`true`] if the server is prepared.
     /// See [`Self::AwaitingConnection`] for more information.
     fn is_prepared(&self) -> bool {
         matches!(self, Self::AwaitingConnection { .. })
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 

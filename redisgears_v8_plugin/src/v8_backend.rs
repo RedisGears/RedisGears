@@ -377,10 +377,13 @@ impl ScriptDebuggerSession {
             .clone()
             .ok_or_else(|| GearsApiError::new("No inspector available for this script."))?;
         let isolate_scope = script.isolate.enter();
-        let _context_scope = script.context.enter(&isolate_scope);
+        let context_scope = script.context.enter(&isolate_scope);
+        inspector.set_context(context_scope.get_raw_context());
 
         let session = DebuggerSession::new(web_socket, inspector)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
+
+        // script.script.recompile(&context_scope);
 
         Ok(Self {
             session,
@@ -390,7 +393,8 @@ impl ScriptDebuggerSession {
 
     fn process_events(&self) -> GearsApiResult {
         let isolate_scope = self.script.isolate.enter();
-        let _context_scope = self.script.context.enter(&isolate_scope);
+        let context_scope = self.script.context.enter(&isolate_scope);
+        self.session.set_context(context_scope.get_raw_context());
 
         self.session
             .process_messages_with_timeout(std::time::Duration::from_millis(10))
@@ -509,7 +513,7 @@ impl DebuggerBackend for DebuggerServer {
         }
     }
 
-    fn accepted_connection(&self) -> bool {
+    fn has_accepted_connection(&self) -> bool {
         matches!(self, Self::Established(_))
     }
 }
@@ -742,7 +746,10 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
-                let inspector = RawInspector::new(isolate_scope.get_raw_isolate());
+                let inspector = RawInspector::new(
+                    isolate_scope.get_raw_isolate(),
+                    ctx_scope.get_raw_context().as_ptr(),
+                );
 
                 let globals = ctx_scope.get_globals();
                 if !(get_global_option().contains(GlobalOptions::AVOID_GLOBALS_ALLOW_LIST)) {

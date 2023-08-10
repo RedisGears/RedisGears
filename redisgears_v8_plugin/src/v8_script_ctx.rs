@@ -493,6 +493,16 @@ impl LibraryCtxInterface for V8LibraryCtx {
         let isolate_scope = self.script_ctx.isolate.enter();
         let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
+        self.script_ctx
+            .inspector
+            .as_ref()
+            .unwrap()
+            .set_context(ctx_scope.get_raw_context());
+        self.script_ctx
+            .inspector
+            .as_ref()
+            .unwrap()
+            .schedule_pause_on_next_statement("I want so");
 
         let script = self
             .script_ctx

@@ -80,7 +80,7 @@ pub trait DebuggerBackend {
 
     /// Returns [`true`] if it has previously accepted a client.
     /// See [`DebuggerBackend::accept_connection`] for more information.
-    fn accepted_connection(&self) -> bool;
+    fn has_accepted_connection(&self) -> bool;
 }
 
 pub struct BackendCtx {

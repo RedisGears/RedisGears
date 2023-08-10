@@ -1655,11 +1655,18 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
     globals.avoid_replication_traffic = ctx.avoid_replication_traffic();
 
     if let Ok(mut debugger_backend) = globals.debugger_server.lock() {
+        let mut has_error = false;
+
         if let Some(debugger_backend) = debugger_backend.as_mut() {
             // if let Some(debugger_backend) = globals.debugger_server.as_mut() {
             if let Err(e) = debugger_backend.process_events(ctx) {
                 log::error!("{e}");
+                has_error = true;
             }
+        }
+
+        if has_error {
+            let _ = debugger_backend.take();
         }
     }
 }
