@@ -577,5 +577,5 @@ WebAssembly.Global
 
 @gearsTest()
 def testInternalCommandOnRegularClient(env):
-    env.expect('_rg_internals.update_stream_last_read_id', 'foo', 'bar', 'aa', 'stream', '1', '2').error().contains('should only be sent from primary or loaded from AOF')
+    env.expect('_rg_internals.update_stream_last_read_id', 'foo', 'bar', 'stream', '1', '2').error().contains('should only be sent from primary or loaded from AOF')
     env.expect('_rg_internals.function', 'load', 'test').error().contains('should only be sent from primary or loaded from AOF')
