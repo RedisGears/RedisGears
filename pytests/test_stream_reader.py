@@ -674,3 +674,11 @@ redis.registerFunction("test2",
     env.expectTfcall('lib', 'test2').equal('OK')
     env.expect('exists', 'stream:1').equal(False)
 
+@gearsTest()
+def testupdateStreamLastReadIdInternalCommand(env):
+    # make sure we get a legacy key spec (first_key, last_key, steps)
+    res = env.cmd('COMMAND', 'INFO', '_rg_internals.update_stream_last_read_id')['_rg_internals.update_stream_last_read_id']
+    env.assertEqual(res['arity'], 6)
+    env.assertEqual(res['first_key_pos'], 3)
+    env.assertEqual(res['last_key_pos'], 3)
+    env.assertEqual(res['step_count'], 1)
