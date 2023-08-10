@@ -1704,11 +1704,11 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     {
         name: "_rg_internals.update_stream_last_read_id",
         flags: [ReadOnly, DenyScript, NoMandatoryKeys],
-        arity: 7,
+        arity: 6,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 4}),
+                begin_search: Index({ index : 3}),
                 find_keys: Range({ last_key: 0, steps: 1, limit: 0 }),
             }
         ],
