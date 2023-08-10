@@ -1703,7 +1703,7 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 #[command(
     {
         name: "_rg_internals.update_stream_last_read_id",
-        flags: [ReadOnly, DenyScript, NoMandatoryKeys],
+        flags: [MayReplicate, DenyScript],
         arity: 6,
         key_spec: [
             {
