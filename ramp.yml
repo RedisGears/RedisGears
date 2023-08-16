@@ -32,8 +32,11 @@ exclude_commands:
     - redisgears_2.INNERCOMMUNICATION
     - redisgears_2.HELLO
     - redisgears_2.CLUSTERSETFROMSHARD
+    - redisgears_2.FORCESHARDSCONNECTION
     - tconfig_set
     - TCONFIG_SET
+    - tconfig_get
+    - TCONFIG_GET
     - tfcall
     - TFCALL
     - tfcallasync
