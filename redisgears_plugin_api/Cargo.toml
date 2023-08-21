@@ -8,8 +8,12 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 
 [dependencies]
 redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
-serde = { version = "1", features = ["derive"] }
-serde_derive = "1"
 bitflags = "1"
+# DO NOT CHANGE to avoid security issues. This exact version
+# specification is required for the second level dependencies
+# to use exactly this version too, so that the dependencies of
+# this project will not be able to compromise it.
+serde = { version = "1.0.171", features = ["derive"] }
+serde_derive = "=1.0.171"
 
 [build-dependencies]
