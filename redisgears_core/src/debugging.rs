@@ -6,10 +6,8 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 
 use crate::{
-    function_load_command::{
-        function_compile, function_evaluate_and_store, function_load_internal, CompilationArguments,
-    },
-    get_backends_mut, GearsLibrary,
+    function_load_command::{function_compile, function_evaluate_and_store, CompilationArguments},
+    GearsLibrary,
 };
 
 /// A debugger server is a thread that executes a user library with
@@ -97,7 +95,7 @@ impl Server {
         }
     }
 
-    fn make_progress(&mut self) -> GearsApiResult {
+    fn make_progress(&mut self) -> GearsApiResult<bool> {
         match self {
             Self::InProgress { backend, .. } => backend.process_events(),
             _ => Err(GearsApiError::new("Invalid state of debugger.")),
@@ -107,7 +105,7 @@ impl Server {
     /// Process the queued incoming and outcoming messages, or advances
     /// the state of the server (if it was prepared, it will attempt
     /// to accept a connection).
-    pub fn process_events(&mut self, context: &Context) -> GearsApiResult {
+    pub fn process_events(&mut self, context: &Context) -> GearsApiResult<bool> {
         self.ensure_connection_is_accepted()?;
         self.ensure_script_is_compiled(context)?;
         self.make_progress()

@@ -72,7 +72,7 @@ pub trait DebuggerBackend {
     ///
     /// The connection must have been established prior to calling this
     /// method, as well as a debugging session must have been started.
-    fn process_events(&mut self) -> GearsApiResult;
+    fn process_events(&mut self) -> GearsApiResult<bool>;
 
     /// Returns a human-readable string, explaining how to connect to
     /// the server.

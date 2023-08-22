@@ -1655,17 +1655,22 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
     globals.avoid_replication_traffic = ctx.avoid_replication_traffic();
 
     if let Ok(mut debugger_backend) = globals.debugger_server.lock() {
-        let mut has_error = false;
+        let mut should_stop = false;
 
         if let Some(debugger_backend) = debugger_backend.as_mut() {
             // if let Some(debugger_backend) = globals.debugger_server.as_mut() {
-            if let Err(e) = debugger_backend.process_events(ctx) {
-                log::error!("{e}");
-                has_error = true;
+            match debugger_backend.process_events(ctx) {
+                Ok(true) => should_stop = true,
+                Err(e) => {
+                    log::error!("{e}");
+                    should_stop = true;
+                }
+                _ => {}
             }
         }
 
-        if has_error {
+        if should_stop {
+            log::info!("Releasing the debugger.");
             let _ = debugger_backend.take();
         }
     }
