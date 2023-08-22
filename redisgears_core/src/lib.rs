@@ -25,9 +25,10 @@ use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply
 use serde::{Deserialize, Serialize};
 
 use config::{
-    FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
-    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_FLAGS, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
-    V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY, V8_PLUGIN_PATH,
+    FatalFailurePolicyConfiguration, DB_LOADING_LOCK_REDIS_TIMEOUT, ENABLE_DEBUG_COMMAND,
+    ERROR_VERBOSITY, EXECUTION_THREADS, FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_FLAGS,
+    V8_LIBRARY_INITIAL_MEMORY_LIMIT, V8_LIBRARY_INITIAL_MEMORY_USAGE,
+    V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY, V8_PLUGIN_PATH,
 };
 
 use redis_module::raw::RedisModule__Assert;
@@ -546,16 +547,21 @@ struct GlobalCtx {
 
 static mut GLOBALS: Option<GlobalCtx> = None;
 
-pub(crate) struct NotificationBlocker;
+pub(crate) struct NotificationBlocker {
+    old_val: bool,
+}
 
 pub(crate) fn get_notification_blocker() -> NotificationBlocker {
+    let res = NotificationBlocker {
+        old_val: get_globals_mut().avoid_key_space_notifications,
+    };
     get_globals_mut().avoid_key_space_notifications = true;
-    NotificationBlocker
+    res
 }
 
 impl Drop for NotificationBlocker {
     fn drop(&mut self) {
-        get_globals_mut().avoid_key_space_notifications = false;
+        get_globals_mut().avoid_key_space_notifications = self.old_val;
     }
 }
 
@@ -945,6 +951,9 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
         }),
         get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
+        get_rdb_lock_timeout: Box::new(|| {
+            DB_LOADING_LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128
+        }),
         get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
         get_v8_library_initial_memory: Box::new(|| {
             V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
@@ -1395,15 +1404,23 @@ fn function_debug_command(
 
 fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if is_master(ctx) {
-        let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_touched(ctx, event, key);
+        let key = key.to_vec();
+        let event = event.to_owned();
+        ctx.add_post_notification_job(move |ctx| {
+            let stream_ctx = &mut get_globals_mut().stream_ctx;
+            stream_ctx.on_stream_touched(ctx, &event, &key);
+        });
     }
 }
 
-fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+fn generic_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if event == "del" {
-        let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_deleted(event, key);
+        let event = event.to_owned();
+        let key = key.to_vec();
+        ctx.add_post_notification_job(move |_ctx| {
+            let stream_ctx = &mut get_globals_mut().stream_ctx;
+            stream_ctx.on_stream_deleted(&event, &key);
+        });
     }
 }
 
@@ -1580,6 +1597,26 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     err.get_msg_verbose()
 }
 
+/// Verify that it is OK to perform an internal command.
+/// Internal command should only run if it came from replication stream
+/// or from AOF loading. In other words, the command did not came directly from a user.
+fn verify_internal_command(ctx: &Context) -> Result<(), RedisError> {
+    let flags = ctx.get_flags();
+    let globals = get_globals();
+    if !flags.contains(ContextFlags::LOADING)
+        && !(flags.contains(ContextFlags::REPLICATED) || globals.db_policy.is_pseudo_slave())
+    {
+        // Internal commands should either be loaded from AOF ([`ContextFlags::LOADING`])
+        // or sent over the replication stream([`ContextFlags::REPLICATED`]).
+        // Another special option is if the instance is pseudo slave (replica of) which is treated as if the command was replicated from primary.
+        // If none of those cases holds we will return an error.
+        return Err(RedisError::Str(
+            "Internal command should only be sent from primary or loaded from AOF",
+        ));
+    }
+    Ok(())
+}
+
 #[command(
     {
         name: "tfcall",
@@ -1627,6 +1664,7 @@ fn function_call_async(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     }
 )]
 fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    verify_internal_command(ctx)?;
     let mut args = args.into_iter().skip(1);
     let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
     match sub_command.as_ref() {
@@ -1665,12 +1703,19 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 #[command(
     {
         name: "_rg_internals.update_stream_last_read_id",
-        flags: [ReadOnly, DenyScript, NoMandatoryKeys],
+        flags: [MayReplicate, DenyScript],
         arity: 6,
-        key_spec: [],
+        key_spec: [
+            {
+                flags: [ReadWrite, Access, Update],
+                begin_search: Index({ index : 3}),
+                find_keys: Range({ last_key: 0, steps: 1, limit: 0 }),
+            }
+        ],
     }
 )]
 fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    verify_internal_command(ctx)?;
     let mut args = args.into_iter().skip(1);
     let library_name = args.next_arg()?.try_as_str()?;
     let stream_consumer = args.next_arg()?.try_as_str()?;
@@ -1736,6 +1781,7 @@ mod gears_module {
                 ["execution-threads", &*EXECUTION_THREADS ,1, 1, 32, ConfigurationFlags::IMMUTABLE, None],
                 ["remote-task-default-timeout", &*REMOTE_TASK_DEFAULT_TIMEOUT , 500, 1, i64::MAX, ConfigurationFlags::DEFAULT, None],
                 ["lock-redis-timeout", &*LOCK_REDIS_TIMEOUT , 500, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
+                ["db-loading-lock-redis-timeout", &*DB_LOADING_LOCK_REDIS_TIMEOUT , 30000, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
 
                 [
                     "v8-maxmemory",

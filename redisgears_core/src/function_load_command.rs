@@ -98,6 +98,7 @@ pub(crate) fn function_load_internal(
     code: &str,
     config: Option<String>,
     upgrade: bool,
+    is_loading_rdb: bool,
 ) -> Result<(), String> {
     let meta_data = library_extract_metadata(code, config, user).map_err(|e| e.to_string())?;
     let backend_name = meta_data.engine.as_str();
@@ -111,10 +112,7 @@ pub(crate) fn function_load_internal(
         meta_data.config.as_ref(),
         Box::new(compile_lib_ctx),
     );
-    let lib_ctx = match lib_ctx {
-        Err(e) => return Err(format!("Failed library compilation: {}", e.get_msg())),
-        Ok(lib_ctx) => lib_ctx,
-    };
+    let lib_ctx = lib_ctx.map_err(|e| format!("Failed library compilation: {}", e.get_msg()))?;
     let mut libraries = get_libraries();
     let old_lib = libraries.remove(&meta_data.name);
     if !upgrade {
@@ -134,24 +132,27 @@ pub(crate) fn function_load_internal(
         revert_notifications_consumers: Vec::new(),
         old_lib,
     };
-    let res = lib_ctx.load_library(&GearsLoadLibraryCtx {
-        ctx,
-        gears_lib_ctx: &mut gears_library,
-    });
+    let res = lib_ctx.load_library(
+        &GearsLoadLibraryCtx {
+            ctx,
+            gears_lib_ctx: &mut gears_library,
+        },
+        is_loading_rdb,
+    );
     if let Err(err) = res {
-        let ret = Err(format!(
+        function_load_revert(gears_library, &mut libraries);
+
+        return Err(format!(
             "Failed loading library: {}.",
             get_msg_verbose(&err)
         ));
-        function_load_revert(gears_library, &mut libraries);
-        return ret;
     }
     if gears_library.functions.is_empty()
         && gears_library.stream_consumers.is_empty()
         && gears_library.notifications_consumers.is_empty()
     {
         function_load_revert(gears_library, &mut libraries);
-        return Err("No function nor registrations was registered".to_string());
+        return Err("Neither function nor other registrations were found.".to_owned());
     }
     gears_library.old_lib = None;
     libraries.insert(
@@ -276,6 +277,7 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
                 &r.args.code,
                 r.args.config.clone(),
                 r.args.upgrade,
+                false,
             );
             if res.is_ok() {
                 let mut replicate_args = Vec::new();
@@ -342,6 +344,7 @@ pub(crate) fn function_load_on_replica(
         &args.code,
         args.config,
         args.upgrade,
+        true,
     ) {
         Ok(_) => Ok(RedisValue::SimpleStringStatic("OK")),
         Err(e) => Err(RedisError::String(e)),

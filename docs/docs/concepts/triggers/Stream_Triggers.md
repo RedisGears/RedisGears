@@ -1,13 +1,19 @@
-# Stream Processing with RedisGears 2.0
+---
+title: "Stream triggers"
+linkTitle: "Stream triggers"
+weight: 2
+description: >
+    Execute a JavaScript function when an item is added to a stream
+---
 
-RedisGears 2.0 comes with a full stream API to processes data from [Redis Stream](https://redis.io/docs/manual/data-types/streams/) Unlike RedisGears v1 that provided a micro batching API, RedisGears 2.0 provides a **real streaming** API, which means that the data will be processed as soon as it enters the stream.
+Redis Stack's triggers and functions feature comes with a full stream API to processes data from [Redis streams](https://redis.io/docs/manual/data-types/streams/). Unlike RedisGears v1 that provided a micro batching API, the new triggers and functions feature provides a **real streaming** API, which means that the data will be processed as soon as it enters the stream.
 
-## Register a Stream consumer
+## Register a stream consumer
 
-RedisGears provide an API that allows Register a stream consumer. Do not get confuse with [Redis Streams Consumer groups](https://redis.io/docs/manual/data-types/streams/#consumer-groups), RedisGears uses Redis Module API to efficiently read the stream and manage its consumers. This approach gives a much better performance as there is no need to invoke any Redis commands in order to read from the stream. Lets see a simple example:
+Triggers and functions provide an API that allows to register a stream trigger. Do not get confused with [Redis streams consumer groups](https://redis.io/docs/manual/data-types/streams/#consumer-groups), triggers and functions uses the Redis Module API to efficiently read the stream and manage its consumers. This approach gives a much better performance as there is no need to invoke any Redis commands in order to read from the stream. Lets see a simple example:
 
 ```js
-#!js api_version=1.0 name=lib
+#!js api_version=1.0 name=myFirstLibrary
 
 redis.registerStreamTrigger(
     "consumer", // consumer name
@@ -27,9 +33,9 @@ Argument Description:
 
 * consumer - the consumer name.
 * stream - streams name prefix on which to trigger the callback.
-* callback - the callback to invoke on each element in the stream. Following the same rules of [Sync and Async invocation](sync_and_async_run.md). The callback will be invoke only on primary shard.
+* callback - the callback to invoke on each element in the stream. Following the same rules of [sync and async invocation](/docs/interact/programmability/triggers-and-functions/concepts/sync_async/). The callback will be invoke only on primary shard.
 
-If we register this library (see the [getting started](../README.md) section to learn how to Register a RedisGears function) and run the following command on our Redis:
+If we register this library (see the [quick start](/docs/interact/programmability/triggers-and-functions/quick_start/) section to learn how to Register a RedisGears function) and run the following command on our Redis:
 
 ```
 XADD stream:1 * foo1 bar1
@@ -73,7 +79,7 @@ The reason why the record is a list of touples and not an object is because the 
 
 Notice that `stream_name` and `record` fields might contains `null`'s if the data can not be decoded as string. the `*_raw` fields will always be provided and will contains the data as `JS` `ArrayBuffer`.
 
-We can observe the streams which are tracked by our registered consumer using [TFUNCTION LIST](commands.md#tfunction-list) command:
+We can observe the streams which are tracked by our registered consumer using `TFUNCTION LIST` command:
 
 ```
 127.0.0.1:6379> TFUNCTION LIST LIBRARY lib vvv
@@ -89,7 +95,7 @@ We can observe the streams which are tracked by our registered consumer using [T
     9)  "default"
     10) "functions"
    1)  (empty array)
-   2)  "stream_consumers"
+   2)  "stream_triggers"
    3)  1)  1) "name"
            1) "consumer"
            2) "prefix"
@@ -137,19 +143,16 @@ We can observe the streams which are tracked by our registered consumer using [T
                  7)  "None"
                  8)  "pending_ids"
                  9)  (empty array)
-   4)  "notifications_consumers"
+   4)  "keyspace_triggers"
    5)  (empty array)
-   6)  "gears_box_info"
-   7)  (nil)
-
 ```
 
-## Enable Trimming and Set Window
+## Enable trimming and set window
 
 We can enable stream trimming by adding `isStreamTrimmed` optional argument after the trigger callback, we can also set the `window` argument that controls how many elements can be processed simultaneously. example:
 
 ```js
-#!js api_version=1.0 name=lib
+#!js api_version=1.0 name=myFirstLibrary
 
 redis.registerStreamTrigger(
     "consumer", // consumer name
@@ -174,15 +177,15 @@ The default values are:
 * `isStreamTrimmed` - `false`
 * `window` - 1
 
-It is enough that a single consumer will enable trimming so that the stream will be trimmed. The stream will be trim according to the slowest consumer that consume the stream at a given time (even if this is not the consumer that enabled the trimming). Raising exception during the callback invocation will **not prevent the trimming**. The callback should decide how to handle failures by invoke a retry or write some error log. The error will be added to the `last_error` field on [TFUNCTION LIST](commands.md#tfunction-list) command.
+It is enough that a single consumer will enable trimming so that the stream will be trimmed. The stream will be trim according to the slowest consumer that consume the stream at a given time (even if this is not the consumer that enabled the trimming). Raising exception during the callback invocation will **not prevent the trimming**. The callback should decide how to handle failures by invoke a retry or write some error log. The error will be added to the `last_error` field on `TFUNCTION LIST` command.
 
-## Data processing Guarantees
+## Data processing guarantees
 
 As long as the primary shard is up and running we guarantee exactly once property (the callback will be triggered exactly one time on each element in the stream). In case of failure such as shard crashing, we guarantee at least once property (the callback will be triggered at least one time on each element in the stream)
 
 ## Upgrades
 
-When upgrading the consumer code (using the `UPGRADE` option of [`TFUNCTION LOAD`](commands.md#tfunction-load) command) the following consumer parameters can be updated:
+When upgrading the consumer code (using the `REPLACE` option of `TFUNCTION LOAD` command) the following consumer parameters can be updated:
 
 * Window
 * Trimming

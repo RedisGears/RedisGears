@@ -18,6 +18,75 @@ enum_configuration! {
     }
 }
 
+macro_rules! generate_lock_timeout_struct {
+    ($vis:vis $name:ident) => {
+        /// A transparent structure to have a lock timeout value with custom
+        /// setters and getters.
+        #[derive(Debug, Default)]
+        #[repr(transparent)]
+        $vis struct $name(AtomicI64);
+        impl std::ops::Deref for $name {
+            type Target = AtomicI64;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        impl std::ops::DerefMut for $name {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+    };
+}
+
+generate_lock_timeout_struct!(pub RdbLockTimeout);
+generate_lock_timeout_struct!(pub LoadLockTimeout);
+
+impl redis_module::ConfigurationValue<i64> for RdbLockTimeout {
+    fn get(&self, _: &redis_module::configuration::ConfigurationContext) -> i64 {
+        self.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn set(
+        &self,
+        _: &redis_module::configuration::ConfigurationContext,
+        val: i64,
+    ) -> Result<(), redis_module::RedisError> {
+        if val < LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(redis_module::RedisError::Str(
+                "The db-loading-lock-redis-timeout value can't be less than lock-redis-timeout value.",
+            ));
+        }
+        self.store(val, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+impl redis_module::ConfigurationValue<i64> for LoadLockTimeout {
+    fn get(&self, _: &redis_module::configuration::ConfigurationContext) -> i64 {
+        self.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn set(
+        &self,
+        _: &redis_module::configuration::ConfigurationContext,
+        val: i64,
+    ) -> Result<(), redis_module::RedisError> {
+        self.store(val, std::sync::atomic::Ordering::SeqCst);
+        // db-loading-lock-redis-timeout shouldn't be less than the
+        // lock-redis-timeout value, as it wouldn't make sense then.
+        // Hence we are updating it here too as well.
+        let current_db_loading_timeout =
+            DB_LOADING_LOCK_REDIS_TIMEOUT.load(std::sync::atomic::Ordering::Relaxed);
+        DB_LOADING_LOCK_REDIS_TIMEOUT.store(
+            std::cmp::max(val, current_db_loading_timeout),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        Ok(())
+    }
+}
+
 lazy_static! {
     /// Configuration value indicates how verbose the error messages will be give
     /// to the user. Value 1 means simple one line error message. Value of 2
@@ -31,8 +100,13 @@ lazy_static! {
     /// Configuration value indicates the timeout for remote tasks that runs on a remote shard.
     pub(crate) static ref REMOTE_TASK_DEFAULT_TIMEOUT: AtomicI64 = AtomicI64::default();
 
-    /// Configuration value indicates the timeout for locking Redis.
-    pub(crate) static ref LOCK_REDIS_TIMEOUT: AtomicI64 = AtomicI64::default();
+    /// Configuration value indicates the timeout for locking Redis (except
+    /// for the loading from RDB. For that, see the [`DB_LOADING_LOCK_REDIS_TIMEOUT`]).
+    pub(crate) static ref LOCK_REDIS_TIMEOUT: LoadLockTimeout = LoadLockTimeout::default();
+
+    /// Configuration value indicates the timeout for locking Redis when
+    /// loading from persistency (either AOF, RDB or replication stream).
+    pub(crate) static ref DB_LOADING_LOCK_REDIS_TIMEOUT: RdbLockTimeout = RdbLockTimeout::default();
 
     /// Configuration value indicates the gears box url.
     pub(crate) static ref GEARS_BOX_ADDRESS: RedisGILGuard<String> = RedisGILGuard::default();

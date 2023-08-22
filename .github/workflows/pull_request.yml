@@ -20,4 +20,4 @@ jobs:
             os_version: 22.04
             os_family: ubuntu
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
-            msrv: 1.65.0
+            msrv: 1.67.0

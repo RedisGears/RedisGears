@@ -88,6 +88,22 @@ redis.registerFunction("simple_set", function(client){
     env.expectTfcallAsync('lib', 'n_notifications').equal(1)
 
 @gearsTest()
+def testNotificationsAreNotFiredFromWithinFunction2(env):
+    """#!js api_version=1.0 name=lib
+var n_notifications = 0;
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
+    redis.log('inside key space trigger');
+    client.call('xadd', 's', '*', 'foo', 'bar');
+    client.call('set', 'x', '1'); // make sure this is not getting into infinit loop.
+});
+
+redis.registerStreamTrigger("stream", "", function(){
+    return 1
+});
+    """
+    env.expect('SET', 'X', '1').equal(True)
+
+@gearsTest()
 def testNotificationsAreNotFiredFromWithinAsyncFunction(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;

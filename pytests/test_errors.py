@@ -60,7 +60,7 @@ def testNoRegistrations(env):
     script = '''#!js api_version=1.0 name=foo
 
     '''
-    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains("No function nor registrations was registered")
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains("Neither function nor other registrations were found")
 
 @gearsTest()
 def testBlockRedisTwice(env):
@@ -574,3 +574,8 @@ def testWasmIsNotExposeByDefault(env):
 WebAssembly.Global
     '''
     env.expect('TFUNCTION', 'LOAD', code).error().contains('WebAssembly is not defined')
+
+@gearsTest()
+def testInternalCommandOnRegularClient(env):
+    env.expect('_rg_internals.update_stream_last_read_id', 'foo', 'bar', 'stream', '1', '2').error().contains('should only be sent from primary or loaded from AOF')
+    env.expect('_rg_internals.function', 'load', 'test').error().contains('should only be sent from primary or loaded from AOF')

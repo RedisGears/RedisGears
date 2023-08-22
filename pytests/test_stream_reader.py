@@ -601,3 +601,84 @@ redis.registerStreamTrigger("consumer", "stream",
     env.cmd('get', 'x')
     conn = env.getResp3Connection()
     runUntil(env, 2, lambda: conn.execute_command('TFUNCTION', 'LIST', 'vvv')[0]['stream_triggers'][0]['streams'][0]['total_record_processed'], timeout=5)
+
+@gearsTest(withReplicas=True)
+def testStreamReaderDeletesStream(env):
+    """#!js api_version=1.0 name=lib
+redis.registerStreamTrigger("consumer", "stream",
+    function(client, data) {
+        client.call('del', data.stream_name);
+    },
+    {
+        isStreamTrimmed: true
+    }
+)
+    """
+    slave_conn = env.getSlaveConnection()
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    env.expect('exists', 'stream:1').equal(False)
+    env.assertEqual(slave_conn.execute_command('exists', 'stream:1'), False)
+
+
+@gearsTest()
+def testStreamReaderAppendStreamInsideTheConsumer(env):
+    """#!js api_version=1.0 name=lib
+var data_added = false;
+redis.registerStreamTrigger("consumer", "stream",
+    function(client, data) {
+        if (!data_added) {
+            client.call('xadd', data.stream_name, '*', 'foo1', 'bar1');
+            data_added = true;
+        }
+    },
+    {
+        isStreamTrimmed: false
+    }
+)
+    """
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    env.expect('xlen', 'stream:1').equal(2)
+
+@gearsTest()
+def testStreamReaderAppendStreamInsideGearsFunction(env):
+    """#!js api_version=1.0 name=lib
+var data_added = false;
+redis.registerStreamTrigger("consumer", "stream",
+    function(client, data) {
+        return;
+    },
+    {
+        isStreamTrimmed: true
+    }
+)
+
+redis.registerFunction("test1",
+    function(client) {
+        client.call('xadd', 'stream:1', '*', 'foo', 'bar');
+        client.call('xadd', 'stream:1', '*', 'foo', 'bar');
+        return 'OK';
+    }
+)
+
+redis.registerFunction("test2",
+    function(client) {
+        client.call('xadd', 'stream:1', '*', 'foo', 'bar')
+        client.call('xadd', 'stream:1', '*', 'foo', 'bar')
+        client.call('del', 'stream:1')
+        return 'OK';
+    }
+)
+    """
+    env.expectTfcall('lib', 'test1').equal('OK')
+    env.expect('xlen', 'stream:1').equal(0)
+    env.expectTfcall('lib', 'test2').equal('OK')
+    env.expect('exists', 'stream:1').equal(False)
+
+@gearsTest()
+def testupdateStreamLastReadIdInternalCommand(env):
+    # make sure we get a legacy key spec (first_key, last_key, steps)
+    res = env.cmd('COMMAND', 'INFO', '_rg_internals.update_stream_last_read_id')['_rg_internals.update_stream_last_read_id']
+    env.assertEqual(res['arity'], 6)
+    env.assertEqual(res['first_key_pos'], 3)
+    env.assertEqual(res['last_key_pos'], 3)
+    env.assertEqual(res['step_count'], 1)

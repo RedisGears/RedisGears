@@ -596,13 +596,15 @@ where
             .into_iter()
             .map(|res| {
                 if let Some((consumer_weak, record, consumer_info)) = res {
+                    let stream_reader = Arc::clone(&self.stream_reader);
+                    let tracked_stream = Arc::clone(&tracked_stream);
                     send_new_data(
                         ctx,
-                        Arc::clone(&tracked_stream),
+                        tracked_stream,
                         consumer_weak,
                         record,
                         consumer_info,
-                        Arc::clone(&self.stream_reader),
+                        stream_reader,
                     );
                 }
             })
