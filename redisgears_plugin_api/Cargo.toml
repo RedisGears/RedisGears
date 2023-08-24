@@ -13,7 +13,7 @@ bitflags = "1"
 # specification is required for the second level dependencies
 # to use exactly this version too, so that the dependencies of
 # this project will not be able to compromise it.
-serde = { version = "1.0.171", features = ["derive"] }
+serde = { version = "=1.0.171", features = ["derive"] }
 serde_derive = "=1.0.171"
 
 [build-dependencies]
