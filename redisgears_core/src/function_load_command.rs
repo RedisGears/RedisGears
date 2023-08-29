@@ -16,7 +16,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{GearsApiError, GearsApiResult
 
 use crate::compiled_library_api::{CompiledLibraryAPI, CompiledLibraryInternals};
 use crate::config::V8_DEBUG_SERVER_ADDRESS;
-use crate::{get_backend, get_backends_mut, verify_name, Deserialize, Serialize};
+use crate::{get_backend, get_backends_mut, get_globals, verify_name, Deserialize, Serialize};
 
 use crate::{get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData};
 

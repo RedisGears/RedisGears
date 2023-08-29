@@ -10,7 +10,6 @@
 
 #![deny(missing_docs)]
 
-use function_load_command::CompilationArguments;
 use keys_notifications_ctx::KeySpaceNotificationsCtx;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::{
@@ -59,9 +58,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     stream_ctx::StreamCtxInterface, GearsApiError,
 };
 
-use redisgears_plugin_api::redisgears_plugin_api::{
-    FunctionCallResult, GearsApiResult, RefCellWrapper,
-};
+use redisgears_plugin_api::redisgears_plugin_api::{FunctionCallResult, RefCellWrapper};
 
 use crate::run_ctx::RunCtx;
 
@@ -274,7 +271,7 @@ impl GearsLibraryCtx {
 }
 
 impl std::fmt::Debug for GearsLibraryCtx {
-    fn fmt(&self, mut f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: add more fields.
 
         f.debug_struct("GearsLibraryCtx")
@@ -310,7 +307,7 @@ impl GearsLibrary {
 }
 
 impl std::fmt::Debug for GearsLibrary {
-    fn fmt(&self, mut f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GearsLibrary")
             .field("gears_lib_ctx", &self.gears_lib_ctx)
             .field("lib_ctx", &format!("{:p}", &self.lib_ctx))

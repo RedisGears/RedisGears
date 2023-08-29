@@ -752,10 +752,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
-                let inspector = RawInspector::new(
-                    isolate_scope.get_raw_isolate(),
-                    ctx_scope.get_raw_context().as_ptr(),
-                );
+                let inspector = RawInspector::new(ctx_scope.get_raw_context().as_ptr());
 
                 let globals = ctx_scope.get_globals();
                 if !(get_global_option().contains(GlobalOptions::AVOID_GLOBALS_ALLOW_LIST)) {
