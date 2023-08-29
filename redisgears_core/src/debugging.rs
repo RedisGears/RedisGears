@@ -71,11 +71,11 @@ impl Server {
                             compiled_function_info.library_context.get_debug_payload()?;
 
                         backend.start_session(debug_payload)?;
-                        function_evaluate_and_store(context, compiled_function_info, false, false)
+                        function_evaluate_and_store(context, compiled_function_info, true, false)
                             .map_err(|e| {
-                            backend.stop_session();
-                            GearsApiError::new(e)
-                        })?
+                                backend.stop_session();
+                                GearsApiError::new(e)
+                            })?
                     } else {
                         return Err(GearsApiError::new("The debugger will not compile a script until there is a client connection accepted."));
                     }

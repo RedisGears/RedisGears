@@ -1662,7 +1662,7 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
             match debugger_backend.process_events(ctx) {
                 Ok(true) => should_stop = true,
                 Err(e) => {
-                    log::error!("{e}");
+                    log::error!("Debugger error: {e}");
                     should_stop = true;
                 }
                 _ => {}

@@ -23,12 +23,12 @@ redis.registerKeySpaceTrigger(
   'bar', // trigger name
   'keys:*', //key prefix
   function(client, data) {
-    console.log("Got this key data updated: " + data);
+    console.log("Got this key data updated1: " + data);
   }, //callback
   {
     description: 'description',
     onTriggerFired: function(client, data) {
-        console.log("Got this key data updated: " + data);
+        console.log("Got this key data updated2: " + data);
     }
   } //optional arguments
 )

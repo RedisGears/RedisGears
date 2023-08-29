@@ -381,7 +381,7 @@ impl ScriptDebuggerSession {
             .ok_or_else(|| GearsApiError::new("No inspector available for this script."))?;
         let isolate_scope = script.isolate.enter();
         let context_scope = script.context.enter(&isolate_scope);
-        inspector.set_context(context_scope.get_raw_context());
+        // inspector.set_context(context_scope.get_raw_context());
 
         let session = DebuggerSession::new(web_socket, inspector)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
@@ -428,7 +428,7 @@ enum DebuggerServer {
     /// A state of the server when everything is prepared, but the
     /// session hasn't been started yet. The server is ready and can
     /// accept connections.
-    Prepared(DebuggerSessionServer),
+    Prepared(Option<DebuggerSessionServer>),
     /// A connection has been established, but the debugging session
     /// hasn't been started yet.
     Established(Box<Option<WebSocketServer>>),
@@ -445,18 +445,22 @@ impl DebuggerServer {
         let server =
             TcpServer::new(address.as_ref()).map_err(|e| GearsApiError::new(e.to_string()))?;
 
-        Ok(Self::Prepared(DebuggerSessionServer { server }))
+        Ok(Self::Prepared(Some(DebuggerSessionServer { server })))
     }
 }
 
 impl DebuggerBackend for DebuggerServer {
-    // TODO: add accepting connection timeout as an argument
+    // TODO: add accepting connection timeout as an argument or don't
+    // do that if it isn't a problem (the cron thread is blocked).
     fn accept_connection(&mut self) -> GearsApiResult {
         let prepared = match self {
-            Self::Prepared(prepared) => prepared,
+            Self::Prepared(prepared) => prepared.take(),
             _ => return Err(GearsApiError::new("The state wasn't \"Prepared\".")),
         };
-        let server = std::mem::replace(prepared, unsafe { std::mem::zeroed() });
+        // Closes the file descriptor 0.
+        let server = prepared.ok_or(GearsApiError::new(
+            "The prepared state wasn't correctly initialised.",
+        ))?;
         let web_socket = server
             .server
             .accept_next_websocket_connection()
@@ -505,13 +509,12 @@ impl DebuggerBackend for DebuggerServer {
     fn get_connection_hints(&self) -> Option<String> {
         match self {
             Self::Prepared(prepared) => prepared
-                .server
-                .get_connection_hints()
-                .map(|h| h.to_string()),
+                .as_ref()
+                .and_then(|p| p.server.get_connection_hints().map(|h| h.to_string())),
             Self::Established(established) => established
                 .as_ref()
                 .as_ref()
-                .map(|e| e.get_connection_hints().to_string()),
+                .and_then(|e| e.get_connection_hints().map(|h| h.to_string()).ok()),
             Self::Started(session) => Some(session.session.get_connection_hints().to_string()),
         }
     }

@@ -131,14 +131,14 @@ pub(crate) struct V8ScriptCtx {
     /// Tensors API for RedisAI integrations.
     pub(crate) tensor_object_template: V8PersistedObjectTemplate,
 
+    /// The V8 Inspector (used for debugging).
+    pub(crate) inspector: Option<Arc<RawInspector>>,
+
     /// The V8 context
     pub(crate) context: V8Context,
 
     /// The V8 isolate
     pub(crate) isolate: V8Isolate,
-
-    /// The V8 Inspector (used for debugging).
-    pub(crate) inspector: Option<Arc<RawInspector>>,
 
     /// Api to interact back with Redis for operations like command invocation and logging.
     pub(crate) compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
@@ -493,16 +493,10 @@ impl LibraryCtxInterface for V8LibraryCtx {
         let isolate_scope = self.script_ctx.isolate.enter();
         let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
-        // self.script_ctx
-        //     .inspector
-        //     .as_ref()
-        //     .unwrap()
-        //     .set_context(ctx_scope.get_raw_context());
-        self.script_ctx
-            .inspector
-            .as_ref()
-            .unwrap()
-            .schedule_pause_on_next_statement("I want so");
+
+        if let Some(inspector) = self.script_ctx.inspector.as_ref() {
+            inspector.schedule_pause_on_next_statement("Pause on load.");
+        }
 
         let script = self
             .script_ctx
