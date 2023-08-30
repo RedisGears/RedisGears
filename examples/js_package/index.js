@@ -11,12 +11,7 @@ redis.registerFunction("foo", () => {
 redis.registerAsyncFunction(
   'asyncfoo', //Function name
   function(client, args) {
-    console.log("We are starting!");
-    while (true) {
-
-    }
-    return "ended sooner";
-    //   console.log("Hello");
+      console.log("Hello from async")
   }, //callback
   {
     description: 'description',
@@ -28,12 +23,12 @@ redis.registerKeySpaceTrigger(
   'bar', // trigger name
   'keys:*', //key prefix
   function(client, data) {
-    console.log("Got this key data updated1: " + data);
+    console.log("Got this key data updated: " + data);
   }, //callback
   {
     description: 'description',
     onTriggerFired: function(client, data) {
-        console.log("Got this key data updated2: " + data);
+        console.log("Got this key data updated: " + data);
     }
   } //optional arguments
 )
