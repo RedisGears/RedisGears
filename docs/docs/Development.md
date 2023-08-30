@@ -9,7 +9,7 @@ description: >
 To aid in the development of new libraries of triggers and functions you can use the type declaration files for the triggers and functions API. This can be used by your preferred development environment to provide autocompletion and type checking based on the type information. You can install it using the following command:
 
 ```bash
-npm install https://gitpkg.now.sh/RedisGears/RedisGears/redisgears_js_api
+npm install https://gitpkg.now.sh/RedisGears/RedisGears/js_api
 ```
 
 Or add it directly as a dependency to your `package.json`:
