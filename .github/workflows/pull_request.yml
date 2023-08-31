@@ -14,13 +14,6 @@ jobs:
             os_family: ubuntu
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
 
-    rhel8-x86:
-        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        with:
-            os_version: 8
-            os_family: rockylinux
-            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
-
     msrv-jammy-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
         with:
