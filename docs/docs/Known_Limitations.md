@@ -1,7 +1,7 @@
 ---
 title: "Known limitations"
 linkTitle: "Known limitations"
-weight: 6
+weight: 7
 description: >
     Overview of the known limitations
 ---
