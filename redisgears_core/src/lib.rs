@@ -299,13 +299,6 @@ struct GearsLibrary {
     compile_lib_internals: Arc<CompiledLibraryInternals>,
 }
 
-impl GearsLibrary {
-    /// Returns the backend name used by this library.
-    pub(crate) fn get_backend_name(&self) -> &str {
-        &self.gears_lib_ctx.meta_data.engine
-    }
-}
-
 impl std::fmt::Debug for GearsLibrary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GearsLibrary")

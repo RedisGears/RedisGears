@@ -124,12 +124,6 @@ impl Server {
             }
         }
     }
-
-    /// Returns [`true`] if the server is prepared.
-    /// See [`Self::AwaitingConnection`] for more information.
-    fn is_prepared(&self) -> bool {
-        matches!(self, Self::AwaitingConnection { .. })
-    }
 }
 
 impl Drop for Server {

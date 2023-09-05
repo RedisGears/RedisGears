@@ -112,13 +112,6 @@ impl CompilationArguments {
         library_extract_metadata(&self.code, self.config.clone(), self.user.0.clone())
     }
 
-    /// Returns the library name.
-    pub(crate) fn get_library_name(&self) -> GearsApiResult<String> {
-        self.get_metadata()
-            .map_err(|e| GearsApiError::new(e.to_string()))
-            .map(|m| m.name)
-    }
-
     /// Returns a mutable reference to the backend for the library.
     pub(crate) fn get_backend_mut(
         &self,

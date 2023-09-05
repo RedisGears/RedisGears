@@ -234,6 +234,11 @@ impl V8ScriptCtx {
         self.is_running.store(val, Ordering::Relaxed);
     }
 
+    /// Returns [`true`] if the script is being debugged.
+    pub(crate) fn is_being_debugged(&self) -> bool {
+        self.inspector.is_some()
+    }
+
     /// Perform necessary operation after locking Redis GIL like saving
     /// the current time for timeout purposes.
     pub(crate) fn after_lock_gil(&self) {
@@ -502,7 +507,7 @@ impl LibraryCtxInterface for V8LibraryCtx {
             .script_ctx
             .script
             .to_local(&isolate_scope)
-            .map_err(|e| GearsApiError::new(e.to_string()))?;
+            .map_err(GearsApiError::new)?;
 
         let _rdb_loading_guard = self.script_ctx.mark_loading_rdb(is_being_loaded_from_rdb);
 

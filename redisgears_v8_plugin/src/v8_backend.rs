@@ -380,7 +380,7 @@ impl ScriptDebuggerSession {
             .clone()
             .ok_or_else(|| GearsApiError::new("No inspector available for this script."))?;
         let isolate_scope = script.isolate.enter();
-        let context_scope = script.context.enter(&isolate_scope);
+        let _context_scope = script.context.enter(&isolate_scope);
         // inspector.set_context(context_scope.get_raw_context());
 
         let session = DebuggerSession::new(web_socket, inspector)
@@ -534,50 +534,51 @@ impl V8Backend {
 }
 
 fn scan_for_isolates_timeout(script_ctx_vec: &ScriptCtxVec) {
-    // let l: std::sync::MutexGuard<Vec<Weak<V8ScriptCtx>>> = script_ctx_vec.lock().unwrap();
-    // for script_ctx_weak in l.iter() {
-    //     let script_ctx = match script_ctx_weak.upgrade() {
-    //         Some(s) => s,
-    //         None => continue,
-    //     };
-    //     if script_ctx
-    //         .is_running
-    //         .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
-    //         .is_ok()
-    //     {
-    //         let interrupt_script_ctx_clone = Weak::clone(script_ctx_weak);
-    //         script_ctx.isolate.request_interrupt(move|isolate|{
-    //             let script_ctx = match interrupt_script_ctx_clone.upgrade() {
-    //                 Some(s) => s,
-    //                 None => return,
-    //             };
-    //             if script_ctx.is_gil_locked() && !script_ctx.is_lock_timedout() {
-    //                 // gil is current locked. we should check for timeout.
-    //                 // todo: call Redis back to reply to pings and some other commands.
-    //                 let gil_lock_duration = script_ctx.gil_lock_duration_ms();
-    //                 let gil_lock_configured_timeout = if script_ctx.is_being_loaded_from_rdb() {
-    //                     gil_rdb_lock_timeout()
-    //                 } else {
-    //                     gil_lock_timeout()
-    //                 };
-    //                 if gil_lock_duration > gil_lock_configured_timeout {
-    //                     script_ctx.set_lock_timedout();
-    //                     script_ctx.compiled_library_api.log_warning(&format!("Script locks Redis for about {}ms which is more then the configured timeout {}ms.", gil_lock_duration, gil_lock_configured_timeout));
-    //                     match get_fatal_failure_policy() {
-    //                         LibraryFatalFailurePolicy::Kill => {
-    //                             script_ctx.compiled_library_api.log_warning("Fatal error policy do not allow to abort the script, we will allow the script to continue running, best effort approach.");
-    //                         }
-    //                         LibraryFatalFailurePolicy::Abort => {
-    //                             script_ctx.compiled_library_api.log_warning("Aborting script with timeout error.");
-    //                             isolate.terminate_execution();
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //             script_ctx.before_run();
-    //         });
-    //     }
-    // }
+    let l: std::sync::MutexGuard<Vec<Weak<V8ScriptCtx>>> = script_ctx_vec.lock().unwrap();
+    for script_ctx_weak in l.iter() {
+        let script_ctx = match script_ctx_weak.upgrade() {
+            Some(s) => s,
+            None => continue,
+        };
+        if !script_ctx.is_being_debugged()
+            && script_ctx
+                .is_running
+                .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+        {
+            let interrupt_script_ctx_clone = Weak::clone(script_ctx_weak);
+            script_ctx.isolate.request_interrupt(move|isolate|{
+                let script_ctx = match interrupt_script_ctx_clone.upgrade() {
+                    Some(s) => s,
+                    None => return,
+                };
+                if script_ctx.is_gil_locked() && !script_ctx.is_lock_timedout() {
+                    // gil is current locked. we should check for timeout.
+                    // todo: call Redis back to reply to pings and some other commands.
+                    let gil_lock_duration = script_ctx.gil_lock_duration_ms();
+                    let gil_lock_configured_timeout = if script_ctx.is_being_loaded_from_rdb() {
+                        gil_rdb_lock_timeout()
+                    } else {
+                        gil_lock_timeout()
+                    };
+                    if gil_lock_duration > gil_lock_configured_timeout {
+                        script_ctx.set_lock_timedout();
+                        script_ctx.compiled_library_api.log_warning(&format!("Script locks Redis for about {}ms which is more then the configured timeout {}ms.", gil_lock_duration, gil_lock_configured_timeout));
+                        match get_fatal_failure_policy() {
+                            LibraryFatalFailurePolicy::Kill => {
+                                script_ctx.compiled_library_api.log_warning("Fatal error policy do not allow to abort the script, we will allow the script to continue running, best effort approach.");
+                            }
+                            LibraryFatalFailurePolicy::Abort => {
+                                script_ctx.compiled_library_api.log_warning("Aborting script with timeout error.");
+                                isolate.terminate_execution();
+                            }
+                        }
+                    }
+                }
+                script_ctx.before_run();
+            });
+        }
+    }
 }
 
 fn check_isolates_memory_limit(
@@ -752,7 +753,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
-                let inspector = RawInspector::new(ctx_scope.get_raw_context().as_ptr());
+                let inspector = RawInspector::new(&ctx_scope);
 
                 let globals = ctx_scope.get_globals();
                 if !(get_global_option().contains(GlobalOptions::AVOID_GLOBALS_ALLOW_LIST)) {
