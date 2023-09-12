@@ -466,7 +466,11 @@ impl LibraryCtxInterface for V8LibraryCtx {
         let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
 
-        let script = self.script_ctx.script.to_local(&isolate_scope);
+        let script = self
+            .script_ctx
+            .script
+            .to_local(&isolate_scope)
+            .map_err(|e| GearsApiError::new(e.to_string()))?;
 
         let _rdb_loading_guard = self.script_ctx.mark_loading_rdb(is_being_loaded_from_rdb);
 
