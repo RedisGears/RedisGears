@@ -1,7 +1,7 @@
 ---
 title: "Development"
 linkTitle: "Development"
-weight: 3
+weight: 4
 description: >
   How to develop for triggers and functions
 ---
