@@ -4,8 +4,6 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::get_globals;
-use redis_module::ContextFlags;
 use redis_module::{
     Context, NextArg, RedisError, RedisResult, RedisString, RedisValue, ThreadSafeContext,
 };
