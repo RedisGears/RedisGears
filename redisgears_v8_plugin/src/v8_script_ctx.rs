@@ -12,7 +12,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 
 use v8_derive::new_native_function;
-use v8_rs::v8::inspector::RawInspector;
+use v8_rs::v8::inspector::Inspector;
 use v8_rs::v8::isolate_scope::V8IsolateScope;
 use v8_rs::v8::v8_context_scope::V8ContextScope;
 use v8_rs::v8::v8_promise::V8LocalPromise;
@@ -132,7 +132,7 @@ pub(crate) struct V8ScriptCtx {
     pub(crate) tensor_object_template: V8PersistedObjectTemplate,
 
     /// The V8 Inspector (used for debugging).
-    pub(crate) inspector: Option<Arc<RawInspector>>,
+    pub(crate) inspector: Option<Arc<Inspector>>,
 
     /// The V8 context
     pub(crate) context: V8Context,
@@ -188,7 +188,7 @@ impl V8ScriptCtx {
         isolate: V8Isolate,
         ctx: V8Context,
         script: V8PersistedScript,
-        inspector: Option<Arc<RawInspector>>,
+        inspector: Option<Arc<Inspector>>,
         tensor_object_template: V8PersistedObjectTemplate,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Self {
@@ -500,7 +500,10 @@ impl LibraryCtxInterface for V8LibraryCtx {
         let trycatch = isolate_scope.new_try_catch();
 
         if let Some(inspector) = self.script_ctx.inspector.as_ref() {
-            inspector.schedule_pause_on_next_statement("Pause on load.");
+            inspector
+                .guard(&isolate_scope)
+                .and_then(|i| i.schedule_pause_on_next_statement("Pause on load."))
+                .map_err(|e| GearsApiError::new(e.to_string()))?;
         }
 
         let script = self

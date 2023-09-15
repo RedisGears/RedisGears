@@ -607,9 +607,7 @@ struct GlobalCtx {
     db_policy: DbPolicy,
     future_handlers: HashMap<String, Vec<Weak<RedisGILGuard<FutureHandlerContext>>>>,
     avoid_replication_traffic: bool,
-    // TODO: remove the mutex, we don't ever use this object
-    // concurrently.
-    debugger_server: Mutex<Option<debugging::Server>>,
+    debugger_server: Option<debugging::Server>,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -1103,7 +1101,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         db_policy: get_db_policy(ctx),
         future_handlers: HashMap::new(),
         avoid_replication_traffic: false,
-        debugger_server: Mutex::new(None),
+        debugger_server: None,
     };
 
     unsafe { GLOBALS = Some(global_ctx) };
@@ -1644,25 +1642,21 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
     }
     globals.avoid_replication_traffic = ctx.avoid_replication_traffic();
 
-    if let Ok(mut debugger_backend) = globals.debugger_server.lock() {
-        let mut should_stop = false;
-
-        if let Some(debugger_backend) = debugger_backend.as_mut() {
-            // if let Some(debugger_backend) = globals.debugger_server.as_mut() {
-            match debugger_backend.process_events(ctx) {
-                Ok(true) => should_stop = true,
-                Err(e) => {
-                    log::error!("Debugger error: {e}");
-                    should_stop = true;
-                }
-                _ => {}
+    let mut should_stop_debugger = false;
+    if let Some(debugger_backend) = globals.debugger_server.as_mut() {
+        match debugger_backend.process_events(ctx) {
+            Ok(true) => should_stop_debugger = true,
+            Err(e) => {
+                log::error!("Debugger error: {e}");
+                should_stop_debugger = true;
             }
+            _ => {}
         }
+    }
 
-        if should_stop {
-            log::info!("Releasing the debugger.");
-            let _ = debugger_backend.take();
-        }
+    if should_stop_debugger {
+        log::info!("Releasing the debugger.");
+        let _ = globals.debugger_server.take();
     }
 }
 

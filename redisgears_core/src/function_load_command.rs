@@ -450,11 +450,7 @@ fn function_load_with_args_with_debugger(
 
     let address = { &V8_DEBUG_SERVER_ADDRESS.lock(context) };
 
-    let mut global_debugger_server = crate::get_globals_mut()
-        .debugger_server
-        .lock()
-        .expect("Couldn't lock the debugger server");
-    if global_debugger_server.is_some() {
+    if crate::get_globals_mut().debugger_server.is_some() {
         return Err(RedisError::Str(
             "Only one debugging session can be established at a time.",
         ));
@@ -483,10 +479,12 @@ fn function_load_with_args_with_debugger(
 
     thread_ctx.reply(Ok(connection_hints_message));
 
-    let _ = global_debugger_server.insert(crate::debugging::Server::prepare(
-        compilation_arguments,
-        debugger_backend,
-    ));
+    let _ = crate::get_globals_mut()
+        .debugger_server
+        .insert(crate::debugging::Server::prepare(
+            compilation_arguments,
+            debugger_backend,
+        ));
 
     Ok(())
 }

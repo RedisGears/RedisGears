@@ -21,7 +21,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LibraryCtxInterface, GearsApiError,
 };
 use v8_rs::v8::inspector::server::{DebuggerSession, TcpServer, WebSocketServer};
-use v8_rs::v8::inspector::RawInspector;
+use v8_rs::v8::inspector::Inspector;
 use v8_rs::v8::isolate_scope::GarbageCollectionJobType;
 use v8_rs::v8::{v8_init_platform, v8_version};
 
@@ -380,13 +380,9 @@ impl ScriptDebuggerSession {
             .clone()
             .ok_or_else(|| GearsApiError::new("No inspector available for this script."))?;
         let isolate_scope = script.isolate.enter();
-        let _context_scope = script.context.enter(&isolate_scope);
-        // inspector.set_context(context_scope.get_raw_context());
 
-        let session = DebuggerSession::new(web_socket, inspector)
+        let session = DebuggerSession::new(web_socket, inspector, &isolate_scope)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
-
-        // script.script.recompile(&context_scope);
 
         Ok(Self {
             session,
@@ -396,11 +392,9 @@ impl ScriptDebuggerSession {
 
     fn process_events(&self) -> GearsApiResult<bool> {
         let isolate_scope = self.script.isolate.enter();
-        let _context_scope = self.script.context.enter(&isolate_scope);
-        // self.session.set_context(context_scope.get_raw_context());
 
         self.session
-            .process_messages_with_timeout(Self::TIMEOUT)
+            .process_messages_with_timeout(Self::TIMEOUT, &isolate_scope)
             .map_err(|e| GearsApiError::new(e.to_string()))
     }
 
@@ -753,7 +747,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
-                let inspector = RawInspector::new(&ctx_scope);
+                let inspector = Inspector::new(&ctx_scope);
 
                 let globals = ctx_scope.get_globals();
                 if !(get_global_option().contains(GlobalOptions::AVOID_GLOBALS_ALLOW_LIST)) {
