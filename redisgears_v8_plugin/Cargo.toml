@@ -12,8 +12,6 @@ redis-module = { workspace = true }
 # v8_rs_derive = { git = "https://github.com/RedisGears/v8-rs" }
 # v8_rs = { path = "../../v8-rs" }
 # v8_rs_derive = { path = "../../v8-rs/v8-rs-derive" }
-v8_rs = { path = "../../v8-rs-inspector" }
-v8_rs_derive = { path = "../../v8-rs-inspector/v8-rs-derive" }
 redisgears_plugin_api = { path = "../redisgears_plugin_api/" }
 redisgears-macros-internals = { path = "../redisgears_macros_internals/" }
 serde_json = "1"
