@@ -1655,7 +1655,7 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
     }
 
     if should_stop_debugger {
-        log::info!("Releasing the debugger.");
+        log::info!("The debugger server connection was dropped. Releasing the debugger.");
         let _ = globals.debugger_server.take();
     }
 }

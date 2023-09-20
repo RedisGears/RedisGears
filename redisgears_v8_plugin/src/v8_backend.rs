@@ -444,21 +444,30 @@ impl DebuggerServer {
 }
 
 impl DebuggerBackend for DebuggerServer {
-    // TODO: add accepting connection timeout as an argument or don't
-    // do that if it isn't a problem (the cron thread is blocked).
     fn accept_connection(&mut self) -> GearsApiResult {
         let prepared = match self {
             Self::Prepared(prepared) => prepared.take(),
             _ => return Err(GearsApiError::new("The state wasn't \"Prepared\".")),
         };
-        // Closes the file descriptor 0.
+
         let server = prepared.ok_or(GearsApiError::new(
             "The prepared state wasn't correctly initialised.",
         ))?;
-        let web_socket = server
-            .server
-            .accept_next_websocket_connection()
-            .map_err(|e| GearsApiError::new(e.to_string()))?;
+
+        let web_socket = match server.server.try_accept_next_websocket_connection() {
+            Ok(web_socket) => web_socket,
+            Err((server, e)) => {
+                if e.kind() != std::io::ErrorKind::WouldBlock {
+                    return Err(GearsApiError::new(e.to_string()));
+                } else {
+                    std::mem::swap(
+                        self,
+                        &mut Self::Prepared(Some(DebuggerSessionServer { server })),
+                    );
+                    return Err(GearsApiError::new("No connection attempted."));
+                }
+            }
+        };
         std::mem::swap(self, &mut Self::Established(Box::new(Some(web_socket))));
         Ok(())
     }

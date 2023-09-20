@@ -10,6 +10,19 @@ use crate::{
     GearsLibrary,
 };
 
+/// The connection state of the debugger server [`Server`].
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum ConnectionState {
+    /// The connecting hasn't been established yet, and the server is
+    /// still listening for those.
+    Waiting,
+    /// The connection has been successfully established.
+    Connected,
+    /// The connection was dropped for whatever reason, the server will
+    /// no longer accept any connections.
+    Dropped,
+}
+
 /// A debugger server is a thread that executes a user library with
 /// a remote debugger attached.
 pub(crate) enum Server {
@@ -21,6 +34,8 @@ pub(crate) enum Server {
         // Made an [`Option`] to be able to change the state via a
         // mutable reference to "this".
         backend: Option<Box<dyn DebuggerBackend>>,
+        //// The time the server started listening for connections.
+        start_time: std::time::Instant,
     },
     /// A state when the [`DebuggerServer`] has established (accepted)
     /// a connection with a remote debugger and compiled+evaluated the
@@ -34,6 +49,9 @@ pub(crate) enum Server {
 }
 
 impl Server {
+    /// How long to wait for the connection to happen.
+    const WAIT_FOR_CONNECTION_TIME: std::time::Duration = std::time::Duration::from_secs(60);
+
     /// Prepares a debugger server for a session.
     pub fn prepare(
         compilation_arguments: CompilationArguments,
@@ -42,16 +60,41 @@ impl Server {
         Self::AwaitingConnection {
             compilation_arguments,
             backend: Some(backend),
+            start_time: std::time::Instant::now(),
         }
     }
 
-    fn ensure_connection_is_accepted(&mut self) -> GearsApiResult {
+    /// Returns the server connection state on success.
+    fn ensure_connection_is_accepted(&mut self) -> GearsApiResult<ConnectionState> {
         match self {
-            Self::AwaitingConnection { backend, .. } => backend
-                .as_mut()
-                .ok_or_else(|| GearsApiError::new("The debugger backend wasn't set correctly."))?
-                .accept_connection(),
-            _ => Ok(()),
+            Self::AwaitingConnection {
+                backend,
+                start_time,
+                ..
+            } => {
+                if start_time.elapsed() >= Self::WAIT_FOR_CONNECTION_TIME {
+                    return Ok(ConnectionState::Dropped);
+                }
+
+                match backend
+                    .as_mut()
+                    .ok_or_else(|| {
+                        GearsApiError::new("The debugger backend wasn't set correctly.")
+                    })?
+                    .accept_connection()
+                {
+                    Ok(_) => Ok(ConnectionState::Connected),
+                    Err(e) => {
+                        // TODO: use error codes of `GearsApiError`.
+                        if e.get_msg().contains("No connection attempted.") {
+                            Ok(ConnectionState::Waiting)
+                        } else {
+                            Ok(ConnectionState::Dropped)
+                        }
+                    }
+                }
+            }
+            _ => Ok(ConnectionState::Connected),
         }
     }
 
@@ -60,6 +103,7 @@ impl Server {
             Self::AwaitingConnection {
                 compilation_arguments,
                 backend,
+                start_time: _,
             } => {
                 let library = if let Some(backend) = backend {
                     if backend.has_accepted_connection() {
@@ -102,11 +146,18 @@ impl Server {
         }
     }
 
-    /// Process the queued incoming and outcoming messages, or advances
-    /// the state of the server (if it was prepared, it will attempt
-    /// to accept a connection).
+    /// Processes the queued incoming and outcoming messages, or
+    /// advances the state of the server (if it was prepared, it will
+    /// attempt to accept a connection).
+    ///
+    /// Returns [`Ok(true)`] if the server has stopped and there will be
+    /// no further progress made, so the object can be freed.
     pub fn process_events(&mut self, context: &Context) -> GearsApiResult<bool> {
-        self.ensure_connection_is_accepted()?;
+        match self.ensure_connection_is_accepted()? {
+            ConnectionState::Waiting => return Ok(false),
+            ConnectionState::Dropped => return Ok(true),
+            ConnectionState::Connected => {}
+        }
         self.ensure_script_is_compiled(context)?;
         self.make_progress()
     }
@@ -138,10 +189,12 @@ impl std::fmt::Debug for Server {
             Self::AwaitingConnection {
                 compilation_arguments,
                 backend,
+                start_time,
             } => f
                 .debug_struct("AwaitingConnection")
                 .field("compilation_arguments", &compilation_arguments)
                 .field("backend", &format!("{:p}", backend))
+                .field("start_time", &start_time)
                 .finish(),
             Self::InProgress { library, backend } => f
                 .debug_struct("InProgress")
