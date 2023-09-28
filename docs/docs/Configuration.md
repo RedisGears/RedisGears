@@ -1,7 +1,7 @@
 ---
 title: "Configuration"
 linkTitle: "Configuration"
-weight: 2
+weight: 3
 description: >
     Configure the operation parameters
 ---

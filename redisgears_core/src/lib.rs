@@ -1597,6 +1597,26 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     err.get_msg_verbose()
 }
 
+/// Verify that it is OK to perform an internal command.
+/// Internal command should only run if it came from replication stream
+/// or from AOF loading. In other words, the command did not came directly from a user.
+fn verify_internal_command(ctx: &Context) -> Result<(), RedisError> {
+    let flags = ctx.get_flags();
+    let globals = get_globals();
+    if !flags.contains(ContextFlags::LOADING)
+        && !(flags.contains(ContextFlags::REPLICATED) || globals.db_policy.is_pseudo_slave())
+    {
+        // Internal commands should either be loaded from AOF ([`ContextFlags::LOADING`])
+        // or sent over the replication stream([`ContextFlags::REPLICATED`]).
+        // Another special option is if the instance is pseudo slave (replica of) which is treated as if the command was replicated from primary.
+        // If none of those cases holds we will return an error.
+        return Err(RedisError::Str(
+            "Internal command should only be sent from primary or loaded from AOF",
+        ));
+    }
+    Ok(())
+}
+
 #[command(
     {
         name: "tfcall",
@@ -1644,6 +1664,7 @@ fn function_call_async(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     }
 )]
 fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    verify_internal_command(ctx)?;
     let mut args = args.into_iter().skip(1);
     let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
     match sub_command.as_ref() {
@@ -1682,12 +1703,19 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 #[command(
     {
         name: "_rg_internals.update_stream_last_read_id",
-        flags: [ReadOnly, DenyScript, NoMandatoryKeys],
+        flags: [MayReplicate, DenyScript],
         arity: 6,
-        key_spec: [],
+        key_spec: [
+            {
+                flags: [ReadWrite, Access, Update],
+                begin_search: Index({ index : 3}),
+                find_keys: Range({ last_key: 0, steps: 1, limit: 0 }),
+            }
+        ],
     }
 )]
 fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    verify_internal_command(ctx)?;
     let mut args = args.into_iter().skip(1);
     let library_name = args.next_arg()?.try_as_str()?;
     let stream_consumer = args.next_arg()?.try_as_str()?;

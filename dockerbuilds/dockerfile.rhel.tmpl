@@ -23,6 +23,7 @@ RUN yum -yqq install rh-python38-python rh-python38-python-devel rh-python38-pyt
 RUN yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrpath openssl-devel python38-devel clang zip unzip
 RUN dnf install -yqq gcc-toolset-11-gcc gcc-toolset-11-gcc-c++ gcc-toolset-11-libatomic-devel autoconf automake libtool
 ENV PATH="/opt/rh/gcc-toolset-11/root/usr/bin:$PATH"
+RUN update-alternatives --set python3 /usr/bin/python3.8
 {% endif %}
 
 {% if OS_VERSION == "7" or OS_VERSION == "2" %}

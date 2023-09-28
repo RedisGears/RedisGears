@@ -1,0 +1,16 @@
+{
+  "name": "js_package",
+  "version": "1.0.0",
+  "description": "Redis Gears JavaScript Example",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "gears-api index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "@redis/gears-api": "https://gitpkg.now.sh/RedisGears/RedisGears/js_api"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

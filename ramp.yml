@@ -26,20 +26,21 @@ capabilities:
     - flash
 exclude_commands:
     - _RG_INTERNALS.FUNCTION
-    - _RG_INTERNALS.UPDATE_STREAM_LAST_READ_ID
     - redisgears_2.REFRESHCLUSTER
     - redisgears_2.INFOCLUSTER
     - redisgears_2.NETWORKTEST
     - redisgears_2.INNERCOMMUNICATION
     - redisgears_2.HELLO
     - redisgears_2.CLUSTERSETFROMSHARD
+    - redisgears_2.FORCESHARDSCONNECTION
     - tconfig_set
     - TCONFIG_SET
+    - tconfig_get
+    - TCONFIG_GET
     - tfcall
     - TFCALL
     - tfcallasync
     - TFCALLASYNC
-    - _rg_internals.update_stream_last_read_id
     - _rg_internals.function
 dependencies:
     gears_v8:

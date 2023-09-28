@@ -17,13 +17,17 @@ libloading = "0.7"
 redisgears_plugin_api = { path="../redisgears_plugin_api/" }
 threadpool = "1"
 reqwest = { version = "0.11", features = ["json", "blocking"] }
-serde_json = "1"
-serde = { version = "1", features = ["derive"] }
-serde_derive = "1"
 sha256 = "1"
 lazy_static = "1"
 log = "0.4"
 byte-unit = "4"
+serde_json = "1"
+# DO NOT CHANGE to avoid security issues. This exact version
+# specification is required for the second level dependencies
+# to use exactly this version too, so that the dependencies of
+# this project will not be able to compromise it.
+serde = { version = "=1.0.171", features = ["derive"] }
+serde_derive = "=1.0.171"
 
 [build-dependencies]
 regex = "1"
