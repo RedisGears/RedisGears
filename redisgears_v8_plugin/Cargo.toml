@@ -13,7 +13,10 @@ v8_rs_derive = { git = "https://github.com/RedisGears/v8-rs" }
 redisgears_plugin_api = { path = "../redisgears_plugin_api/" }
 redisgears-macros-internals = { path = "../redisgears_macros_internals/" }
 serde_json = "1"
-serde = "1"
+# DO NOT change this exact version specification, it is required to avoid
+# the blob of serde_derive in the build.
+serde = { version = "=1.0.171", features = ["derive"] }
+serde_derive = "=1.0.171"
 lazy_static = "1"
 bitflags = "2"
 
