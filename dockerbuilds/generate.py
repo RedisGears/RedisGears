@@ -7,7 +7,7 @@ import jinja2
 defaults = {
     "OS_VERSION": "22.04",
     "OS_FAMILY": "ubuntu",
-    "REDIS_VERSION": "7.2-rc3",
+    "REDIS_VERSION": "7.2.1",
     "PLATFORM": "x86_64",
     "PUBLISH": False,
     "V8_VERSION": "default",
