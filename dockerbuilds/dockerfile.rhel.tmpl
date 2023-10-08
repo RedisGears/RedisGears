@@ -24,6 +24,14 @@ RUN yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrp
 RUN dnf install -yqq gcc-toolset-11-gcc gcc-toolset-11-gcc-c++ gcc-toolset-11-libatomic-devel autoconf automake libtool
 ENV PATH="/opt/rh/gcc-toolset-11/root/usr/bin:$PATH"
 RUN update-alternatives --set python3 /usr/bin/python3.8
+{% elif OS_VERSION == "9" %}
+RUN yum install -yqq git openssl wget dialog subversion chrpath openssl-devel clang zip unzip python-pip python-devel 
+RUN dnf install -yqq gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-libatomic-devel autoconf automake libtool
+RUN dnf install -y yum-utils
+RUN dnf config-manager --set-enabled devel
+RUN dnf update -y
+RUN dnf install -y redhat-lsb
+ENV PATH="/opt/rh/gcc-toolset-12/root/usr/bin:$PATH"
 {% endif %}
 
 {% if OS_VERSION == "7" or OS_VERSION == "2" %}
