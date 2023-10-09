@@ -4,10 +4,12 @@ import sys
 
 import jinja2
 
+# REDIS_VERSION is is s3://redismodules/redis-stack/dependencies
+# it is not the version of redis, but the version of the pre-compiled package
 defaults = {
     "OS_VERSION": "22.04",
     "OS_FAMILY": "ubuntu",
-    "REDIS_VERSION": "7.2.1",
+    "REDIS_VERSION": "7.2.1-1",
     "PLATFORM": "x86_64",
     "PUBLISH": False,
     "V8_VERSION": "default",
