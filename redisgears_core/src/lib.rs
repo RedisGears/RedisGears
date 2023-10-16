@@ -1659,6 +1659,7 @@ fn function_call_async(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     {
         name: "_rg_internals.function",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        enterprise_flags: [ProxyFiltered],
         arity: -3,
         key_spec: [],
     }
@@ -1704,6 +1705,7 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     {
         name: "_rg_internals.update_stream_last_read_id",
         flags: [MayReplicate, DenyScript],
+        enterprise_flags: [ProxyFiltered],
         arity: 6,
         key_spec: [
             {
