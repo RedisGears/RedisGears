@@ -1668,14 +1668,19 @@ fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisRe
     verify_internal_command(ctx)?;
     let mut args = args.into_iter().skip(1);
     let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
+    let res = match sub_command.as_ref() {
         "load" => function_load_command::function_load_on_replica(ctx, args),
         "del" => function_del_command::function_del_on_replica(ctx, args),
         _ => Err(RedisError::String(format!(
             "Unknown subcommand {}",
             sub_command
         ))),
+    };
+    if res.is_ok() {
+        // Replicate the command (in case we have another replica connected to us).
+        ctx.replicate_verbatim();
     }
+    res
 }
 
 #[command(
