@@ -95,6 +95,7 @@ lazy_static::lazy_static! {
             "isNaN",
             "console",
             "WebAssembly",
+            "Iterator",
         ],
         deny_list: [
             "eval",              // Might be considered dangerous.
