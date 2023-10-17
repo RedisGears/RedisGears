@@ -338,14 +338,8 @@ pub(crate) fn function_load_on_replica(
     if args.user.is_none() {
         return Err(RedisError::Str("User was not provided by primary"));
     }
-    match function_load_internal(
-        ctx,
-        args.user.unwrap(),
-        &args.code,
-        args.config,
-        args.upgrade,
-        true,
-    ) {
+    // On replica, we always obey the primary and perform an upgrade.
+    match function_load_internal(ctx, args.user.unwrap(), &args.code, args.config, true, true) {
         Ok(_) => Ok(RedisValue::SimpleStringStatic("OK")),
         Err(e) => Err(RedisError::String(e)),
     }
