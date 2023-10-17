@@ -7,7 +7,7 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
+redis-module = { workspace = true }
 bitflags = "1"
 # DO NOT CHANGE to avoid security issues. This exact version
 # specification is required for the second level dependencies

@@ -7,8 +7,8 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
-redis-module-macros = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
+redis-module = { workspace = true }
+redis-module-macros = { workspace = true }
 redisgears_plugin_api = { path = "../redisgears_plugin_api/" }
 
 [build-dependencies]
