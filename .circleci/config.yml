@@ -116,6 +116,7 @@ commands:
           name: run python tests
           working_directory: pytests
           command: |
+            ulimit -n 1024
             ./run_tests.sh
       - run:
           shell: /bin/bash -l -eo pipefail
