@@ -110,8 +110,8 @@ pub(crate) fn function_del_on_replica(
             s.try_as_str()
         })?;
     let mut libraries = get_libraries();
-    match libraries.remove(lib_name) {
-        Some(_) => Ok(RedisValue::SimpleStringStatic("OK")),
-        None => Err(RedisError::Str("library does not exists")),
-    }
+    // On replica there is no need to return an error if the function does not exists.
+    // So there is not need to check the return value of the function.
+    libraries.remove(lib_name);
+    Ok(RedisValue::SimpleStringStatic("OK"))
 }

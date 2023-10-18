@@ -4,7 +4,10 @@ description: Trigger and execute JavaScript functions in the Redis process
 linktitle: Triggers and functions
 type: docs
 stack: true
-bannerText: The triggers and functions feature of Redis Stack and its documentation are currently in preview, and only available in Redis Stack 7.2 or later. If you notice any errors, feel free to submit an issue to GitHub using the "Create new issue" link in the top right-hand corner of this page.
+bannerText: |
+  The triggers and functions feature of Redis Stack and its documentation are currently in preview, and only available in Redis Stack 7.2 or later. You can try out the triggers and functions preview with a [free Redis Cloud account](https://redis.com/try-free/?utm_source=redisio&utm_medium=referral&utm_campaign=2023-09-try_free&utm_content=cu-redis_cloud_users). The preview is available in the fixed subscription plan for the **Google Cloud Asia Pacific (Tokyo)** and **AWS Asia Pacific (Singapore)** regions.
+
+  If you notice any errors in this documentation, feel free to submit an issue to GitHub using the "Create new issue" link in the top right-hand corner of this page.
 bannerChildren: true
 ---
 
@@ -12,9 +15,6 @@ bannerChildren: true
 [![Github](https://img.shields.io/static/v1?label=&message=repository&color=5961FF&logo=github)](https://github.com/RedisGears/RedisGears/)
 
 The triggers and functions feature of Redis Stack allows running JavaScript functions inside Redis. These functions can be executed on-demand, by an event-driven trigger, or by a stream processing trigger.
-
-> You can try out the triggers and functions preview with a [free Redis Cloud account](https://redis.com/try-free/). The preview is available in the fixed subscription plan for the Google Cloud Asia Pacific (Tokyo) and AWS Asia Pacific (Singapore) regions.
-
 
 ## Quick links
 
