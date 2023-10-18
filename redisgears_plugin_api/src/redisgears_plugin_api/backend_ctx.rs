@@ -146,6 +146,10 @@ pub trait BackendCtxInterfaceUninitialised {
 
     /// Initialises the backend with the information passed and returns
     /// a successfully initialised instance.
+    /// As this is a part of the plugin API, the code loaded this way
+    /// cannot have the logger propagated automatically. For this
+    /// reason, it is required to have it passed as an argument to this
+    /// method.
     fn initialize(
         self: Box<Self>,
         logger: &'static dyn log::Log,

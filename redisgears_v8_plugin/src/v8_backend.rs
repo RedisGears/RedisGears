@@ -164,6 +164,14 @@ impl<'a> log::Log for Logger<'a> {
     }
 }
 
+/// The logger implementation for this crate. This crate has a plugin
+/// interface and is and can only be used as a plugin (so, a library
+/// loaded at runtime). For this reason, Rust cannot propagate the
+/// main crate's logger (where it is set) to the code of this crate. To
+/// address this, we require a logger to be passed in the
+/// [`BackendCtxInterfaceUninitialised::initialize`] method which is
+/// used to initialise the plugin. Until the moment of initialisation,
+/// the [`NoopLogger`] is used which does not log anything.
 static mut LOGGER: Logger = Logger(&NoopLogger);
 
 type ScriptCtxVec = Arc<Mutex<Vec<Weak<V8ScriptCtx>>>>;
