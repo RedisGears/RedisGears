@@ -44,9 +44,6 @@ pub enum LibraryFatalFailurePolicy {
 /// so that those can downcast to their known type, so that that they
 /// can work with it.
 pub type DebuggerBackendPayload = Arc<dyn Any + Send + Sync>;
-/// A type for the script deletion callback. Should be invoked when
-/// the debugger no longer needs the script.
-pub type DebuggerDeleteCallback = Box<dyn FnOnce() -> GearsApiResult>;
 
 /// The trait which the plugins can implement to support the debugging.
 /// The debugging processed is assumed to follow the client-server
