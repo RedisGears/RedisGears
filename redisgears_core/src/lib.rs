@@ -638,12 +638,6 @@ fn get_globals_mut() -> &'static mut GlobalCtx {
     unsafe { GLOBALS.as_mut().unwrap() }
 }
 
-/// Returns the global redis module context after the module has been
-/// initialized.
-fn get_backends_mut() -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceInitialised>> {
-    &mut get_globals_mut().backends
-}
-
 /// Returns mutable reference to the uninitialised backends dictionary.
 fn get_uninitialised_backends_mut(
 ) -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceUninitialised>> {
@@ -785,7 +779,7 @@ pub(crate) fn call_redis_command_async<'ctx>(
                 globals
                     .future_handlers
                     .entry(lib)
-                    .or_insert(Vec::new())
+                    .or_default()
                     .push(Arc::downgrade(&future_handler_context));
 
                 // Set the unblock handler which will call the plugin callback and free the `future_handler_context`
@@ -930,21 +924,6 @@ fn initialize_v8_backend(
     let version = initialised_backend.get_version();
     log::info!("Initialized backend: {name}, {version}.");
     Ok(initialised_backend)
-}
-
-pub(crate) fn get_backend(
-    name: &str,
-) -> Result<&'static mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
-    get_backends_mut()
-        .get_mut(name)
-        .ok_or(RedisError::String(format!("No such backend: {name}")))
-        .or_else(|_| {
-            let uninitialised_backend = get_uninitialised_backends_mut()
-                .remove(name)
-                .ok_or_else(|| RedisError::String(format!("Unknown backend {name}")))?;
-            let backend = initialize_v8_backend(uninitialised_backend)?;
-            Ok(get_backends_mut().entry(name.to_owned()).or_insert(backend))
-        })
 }
 
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
@@ -1156,7 +1135,7 @@ fn build_backend_module_info(ctx: &InfoContext, info: ModuleInfo) -> RedisResult
 }
 
 fn build_initialised_backends_info(ctx: &InfoContext) -> RedisResult<()> {
-    get_backends_mut()
+    ctx.get_backends_mut()
         .values_mut()
         .filter_map(|b| b.get_info())
         .try_for_each(|info| build_backend_module_info(ctx, info))
@@ -1380,6 +1359,40 @@ fn function_call_command(
     }
 }
 
+/// Backend-related functionality.
+pub(crate) trait GILBackendStorage {
+    /// Returns a reference to an initialised backend found by name.
+    fn get_backend(
+        &self,
+        name: &str,
+    ) -> Result<&'static mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
+        self.get_backends_mut()
+            .get_mut(name)
+            .ok_or(RedisError::String(format!("No such backend: {name}")))
+            .or_else(|_| {
+                let uninitialised_backend = get_uninitialised_backends_mut()
+                    .remove(name)
+                    .ok_or_else(|| RedisError::String(format!("Unknown backend {name}")))?;
+                let backend = initialize_v8_backend(uninitialised_backend)?;
+                Ok(self
+                    .get_backends_mut()
+                    .entry(name.to_owned())
+                    .or_insert(backend))
+            })
+    }
+
+    /// Returns the global redis module context after the module has been
+    /// initialized.
+    fn get_backends_mut(
+        &self,
+    ) -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceInitialised>> {
+        &mut get_globals_mut().backends
+    }
+}
+
+impl GILBackendStorage for Context {}
+impl GILBackendStorage for InfoContext {}
+
 fn function_debug_command(
     ctx: &Context,
     mut args: Skip<IntoIter<redis_module::RedisString>>,
@@ -1441,7 +1454,7 @@ fn function_debug_command(
         }
         _ => (),
     }
-    let backend = get_backend(backend_name).map_or(
+    let backend = ctx.get_backend(backend_name).map_or(
         Err(RedisError::String(format!(
             "Backend '{}' does not exists or not yet loaded",
             backend_name
@@ -1685,8 +1698,9 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
 fn verify_internal_command(ctx: &Context) -> Result<(), RedisError> {
     let flags = ctx.get_flags();
     let globals = get_globals();
-    if !flags.contains(ContextFlags::LOADING)
-        && !(flags.contains(ContextFlags::REPLICATED) || globals.db_policy.is_pseudo_slave())
+    if !(flags.contains(ContextFlags::LOADING)
+        || flags.contains(ContextFlags::REPLICATED)
+        || globals.db_policy.is_pseudo_slave())
     {
         // Internal commands should either be loaded from AOF ([`ContextFlags::LOADING`])
         // or sent over the replication stream([`ContextFlags::REPLICATED`]).

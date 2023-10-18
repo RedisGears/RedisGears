@@ -108,7 +108,7 @@ impl Server {
                 let library = if let Some(backend) = backend {
                     if backend.has_accepted_connection() {
                         let compiled_function_info =
-                            function_compile(compilation_arguments.clone(), true)
+                            function_compile(context, compilation_arguments.clone(), true)
                                 .map_err(GearsApiError::new)?;
 
                         let debug_payload =

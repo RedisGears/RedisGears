@@ -14,7 +14,8 @@ use redisgears_plugin_api::redisgears_plugin_api::{GearsApiError, GearsApiResult
 
 use crate::compiled_library_api::{CompiledLibraryAPI, CompiledLibraryInternals};
 use crate::config::V8_DEBUG_SERVER_ADDRESS;
-use crate::{get_backend, verify_name, Deserialize, Serialize};
+use crate::GILBackendStorage;
+use crate::{verify_name, Deserialize, Serialize};
 
 use crate::{get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData};
 
@@ -42,24 +43,6 @@ pub(crate) struct FunctionLoadArgs {
     debug: bool,
 }
 
-/// A [RedisString] that implements [Send].
-#[repr(transparent)]
-#[derive(Debug, Clone)]
-pub(crate) struct ParkedRedisString(RedisString);
-unsafe impl Send for ParkedRedisString {}
-impl From<RedisString> for ParkedRedisString {
-    fn from(value: RedisString) -> Self {
-        Self(value)
-    }
-}
-impl std::ops::Deref for ParkedRedisString {
-    type Target = RedisString;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 /// The data of a compiled library.
 pub(crate) struct CompiledLibraryData {
     meta_data: GearsLibraryMetaData,
@@ -70,7 +53,7 @@ pub(crate) struct CompiledLibraryData {
 /// The compilation arguments for a script.
 #[derive(Debug, Clone)]
 pub(crate) struct CompilationArguments {
-    user: ParkedRedisString,
+    user: RedisString,
     code: String,
     config: Option<String>,
 }
@@ -89,11 +72,7 @@ impl TryFrom<FunctionLoadArgs> for CompilationArguments {
 
 impl CompilationArguments {
     /// Creates a new
-    pub(crate) fn new<T: Into<ParkedRedisString>>(
-        user: T,
-        code: String,
-        config: Option<String>,
-    ) -> Self {
+    pub(crate) fn new<T: Into<RedisString>>(user: T, code: String, config: Option<String>) -> Self {
         Self {
             user: user.into(),
             code,
@@ -101,29 +80,35 @@ impl CompilationArguments {
         }
     }
 
-    pub(crate) fn compile(&self, debug: bool) -> GearsApiResult<CompiledLibraryData> {
-        compile_library(self, debug)
+    pub(crate) fn compile(
+        &self,
+        context: &Context,
+        debug: bool,
+    ) -> GearsApiResult<CompiledLibraryData> {
+        compile_library(context, self, debug)
     }
 
     /// Returns the library metadata.
     pub(crate) fn get_metadata(&self) -> Result<GearsLibraryMetaData, RedisError> {
-        library_extract_metadata(&self.code, self.config.clone(), self.user.0.clone())
+        library_extract_metadata(&self.code, self.config.clone(), self.user.clone())
     }
 
     /// Returns a mutable reference to the backend for the library.
     pub(crate) fn get_backend_mut(
         &self,
+        context: &Context,
     ) -> Result<&mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
-        get_backend(self.get_metadata()?.engine.as_str())
+        context.get_backend(self.get_metadata()?.engine.as_str())
     }
 }
 
 fn start_debug_server_for_library(
+    context: &Context,
     address: &str,
     compilation_arguments: &CompilationArguments,
 ) -> Result<Box<dyn DebuggerBackend + Send>, GearsApiError> {
     compilation_arguments
-        .get_backend_mut()?
+        .get_backend_mut(context)?
         .start_debug_server(address)
 }
 
@@ -181,13 +166,14 @@ pub(crate) fn function_load_revert(
 }
 
 fn compile_library(
+    context: &Context,
     compilation_arguments: &CompilationArguments,
     debug: bool,
 ) -> GearsApiResult<CompiledLibraryData> {
     let meta_data = compilation_arguments
         .get_metadata()
         .map_err(GearsApiError::from)?;
-    let backend = compilation_arguments.get_backend_mut()?;
+    let backend = compilation_arguments.get_backend_mut(context)?;
     let compile_lib_ctx = CompiledLibraryAPI::new();
     let compile_lib_internals = compile_lib_ctx.take_internals();
     let library = backend.compile_library(
@@ -266,11 +252,12 @@ pub(crate) struct CompiledLibraryInfo {
 
 /// Compiles the script code but does not evaluate it.
 pub(crate) fn function_compile(
+    context: &Context,
     compilation_arguments: CompilationArguments,
     debug: bool,
 ) -> Result<CompiledLibraryInfo, String> {
     let compiled_library_data = compilation_arguments
-        .compile(debug)
+        .compile(context, debug)
         .map_err(|e| format!("Failed to compile library: {}", e.get_msg()))?;
     let (meta_data, library_context, internals) = (
         compiled_library_data.meta_data,
@@ -292,7 +279,7 @@ pub(crate) fn function_load_internal(
     upgrade: bool,
     is_loading_rdb: bool,
 ) -> Result<Arc<GearsLibrary>, String> {
-    let compiled_function_info = function_compile(compilation_arguments, debug)?;
+    let compiled_function_info = function_compile(context, compilation_arguments, debug)?;
     function_evaluate_and_store(context, compiled_function_info, upgrade, is_loading_rdb)
 }
 
@@ -443,9 +430,6 @@ fn function_load_with_args_with_debugger(
     context: &Context,
     args: FunctionLoadArgs,
 ) -> RedisResult<()> {
-    let blocked_client = context.block_client();
-    let thread_ctx = ThreadSafeContext::with_blocked_client(blocked_client);
-
     let address = { &V8_DEBUG_SERVER_ADDRESS.lock(context) };
 
     if crate::get_globals_mut().debugger_server.is_some() {
@@ -459,7 +443,7 @@ fn function_load_with_args_with_debugger(
     })?;
 
     let (connection_hints_message, debugger_backend) =
-        start_debug_server_for_library(address, &compilation_arguments)
+        start_debug_server_for_library(context, address, &compilation_arguments)
             .map(|debugger_server| {
                 let connection_hints_message = RedisValue::VerbatimString((
                     "txt"
@@ -475,7 +459,7 @@ fn function_load_with_args_with_debugger(
             })
             .map_err(|e| RedisError::String(e.to_string()))?;
 
-    thread_ctx.reply(Ok(connection_hints_message));
+    context.reply(Ok(connection_hints_message));
 
     let _ = crate::get_globals_mut()
         .debugger_server
@@ -511,14 +495,12 @@ pub(crate) fn function_load_with_args_without_debugger(
 }
 
 pub(crate) fn function_load_with_args(context: &Context, args: FunctionLoadArgs) {
-    if let Err(e) = if args.debug {
+    let _ = if args.debug {
         function_load_with_args_with_debugger(context, args)
     } else {
         function_load_with_args_without_debugger(context, args)
-    } {
-        let blocked_client = context.block_client();
-        ThreadSafeContext::with_blocked_client(blocked_client).reply(Err(e));
     }
+    .map_err(|e| context.reply(Err(e)));
 }
 
 pub(crate) fn function_load_command(

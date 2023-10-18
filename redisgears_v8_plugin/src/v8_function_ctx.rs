@@ -245,7 +245,6 @@ impl V8InternalFunction {
         let isolate_scope = self.script_ctx.isolate.enter();
         let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
-        // TODO: set .. here?
 
         let res = {
             let args = {

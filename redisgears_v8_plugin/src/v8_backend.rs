@@ -120,6 +120,12 @@ fn deny_list() -> &'static HashSet<String> {
     &GLOBALS_ALLOW_DENY_LISTS.1
 }
 
+/// A "noop" logger that doesn't log anything.
+/// This logger exists only to satisfy the static requirement of the
+/// logging facility. An external logger is set for this crate in
+/// [`BackendCtxInterfaceUninitialised::initialize`]. Until this
+/// happens, we may need at least some logging implementation. For this
+/// reason, there is this "noop" implementation.
 struct NoopLogger;
 impl log::Log for NoopLogger {
     fn enabled(&self, _: &Metadata) -> bool {
@@ -129,6 +135,10 @@ impl log::Log for NoopLogger {
     fn flush(&self) {}
 }
 
+/// A logger for this crate that filters out some
+/// unimportant-to-this-crate stuff, such as the [`tungstenite`] crate's
+/// logs. This is an implementation detail of [`v8_rs`] which we don't
+/// need here.
 struct Logger<'a>(&'a dyn log::Log);
 impl<'a> Logger<'a> {
     const TARGET_BLACKLIST: [&'static str; 1] = ["tungstenite"];
@@ -736,7 +746,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
     fn compile_library(
         &mut self,
-        _debug: bool,
+        debug: bool,
         module_name: &str,
         code: &str,
         api_version: ApiVersion,
@@ -756,7 +766,11 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
-                let inspector = Inspector::new(&ctx_scope);
+                let inspector = if debug {
+                    Some(Inspector::new(&ctx_scope))
+                } else {
+                    None
+                };
 
                 let globals = ctx_scope.get_globals();
                 if !(get_global_option().contains(GlobalOptions::AVOID_GLOBALS_ALLOW_LIST)) {
@@ -782,23 +796,21 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let v8code_str = isolate_scope.new_string(code);
 
                 let trycatch = isolate_scope.new_try_catch();
-                let script = match ctx_scope.compile(&v8code_str) {
-                    Some(s) => s,
-                    None => {
-                        return Err(get_exception_msg(&isolate, trycatch, &ctx_scope));
-                    }
-                };
+                let script = ctx_scope
+                    .compile(&v8code_str)
+                    .ok_or(get_exception_msg(&isolate, trycatch, &ctx_scope))?;
 
                 let script = script.persist();
                 let tensor_obj_template = get_tensor_object_template(&isolate_scope);
                 (ctx, script, tensor_obj_template, inspector)
             };
+
             let script_ctx = Arc::new(V8ScriptCtx::new(
                 module_name.to_owned(),
                 isolate,
                 ctx,
                 script,
-                Some(Arc::new(inspector)),
+                inspector.map(Arc::new),
                 tensor_obj_template,
                 compiled_library_api,
             ));
