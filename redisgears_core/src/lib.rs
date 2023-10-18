@@ -1381,8 +1381,7 @@ pub(crate) trait GILBackendStorage {
             })
     }
 
-    /// Returns the global redis module context after the module has been
-    /// initialized.
+    /// Returns the map of initialisied backends, accessed by their name.
     fn get_backends_mut(
         &self,
     ) -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceInitialised>> {
