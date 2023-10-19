@@ -426,6 +426,9 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
 
 /// Loads the function only on this shard, starts a debugger server,
 /// waits for the connection and starts the debugging session.
+///
+/// It makes sure that the function is only going to be loaded onto this
+/// shard by simply not propagating the event to all the other shards.
 fn function_load_with_args_with_debugger(
     context: &Context,
     args: FunctionLoadArgs,
@@ -494,13 +497,15 @@ pub(crate) fn function_load_with_args_without_debugger(
     Ok(())
 }
 
-pub(crate) fn function_load_with_args(context: &Context, args: FunctionLoadArgs) {
-    let _ = if args.debug {
+pub(crate) fn function_load_with_args(
+    context: &Context,
+    args: FunctionLoadArgs,
+) -> RedisResult<()> {
+    if args.debug {
         function_load_with_args_with_debugger(context, args)
     } else {
         function_load_with_args_without_debugger(context, args)
     }
-    .map_err(|e| context.reply(Err(e)));
 }
 
 pub(crate) fn function_load_command(
@@ -512,7 +517,11 @@ pub(crate) fn function_load_command(
         return Err(RedisError::Str("Unknown argument user"));
     }
     args.user = Some(ctx.get_current_user());
-    function_load_with_args(ctx, args);
+
+    if let Err(e) = function_load_with_args(ctx, args) {
+        ctx.reply(Err(e));
+    }
+
     Ok(RedisValue::NoReply)
 }
 
