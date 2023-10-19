@@ -433,6 +433,12 @@ fn function_load_with_args_with_debugger(
     context: &Context,
     args: FunctionLoadArgs,
 ) -> RedisResult<()> {
+    if mr::libmr::is_cluster_in_cluster_mode() {
+        return Err(RedisError::Str(
+            "Debugging when in cluster mode isn't supported.",
+        ));
+    }
+
     let address = { &V8_DEBUG_SERVER_ADDRESS.lock(context) };
 
     if crate::get_globals_mut().debugger_server.is_some() {
