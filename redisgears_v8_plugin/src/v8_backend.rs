@@ -449,9 +449,6 @@ enum DebuggerServer {
     Started(Box<ScriptDebuggerSession>),
 }
 
-// TODO remove
-unsafe impl Send for DebuggerServer {}
-
 impl DebuggerServer {
     fn prepare<T: AsRef<str>>(address: T) -> Result<Self, GearsApiError> {
         let server =
@@ -1050,10 +1047,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
         Some(ModuleInfo { sections })
     }
 
-    fn start_debug_server(
-        &self,
-        address: &str,
-    ) -> Result<Box<dyn DebuggerBackend + Send>, GearsApiError> {
+    fn start_debug_server(&self, address: &str) -> Result<Box<dyn DebuggerBackend>, GearsApiError> {
         Ok(Box::new(DebuggerServer::prepare(address)?))
     }
 }

@@ -121,7 +121,7 @@ pub trait BackendCtxInterfaceInitialised {
     fn start_debug_server(
         &self,
         _address: &str,
-    ) -> Result<Box<dyn DebuggerBackend + Send>, GearsApiError> {
+    ) -> Result<Box<dyn DebuggerBackend>, GearsApiError> {
         Err(GearsApiError::new(format!(
             "Debugging isn't implemented for this backend: {}, {}",
             self.get_name(),

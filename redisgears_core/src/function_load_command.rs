@@ -106,7 +106,7 @@ fn start_debug_server_for_library(
     context: &Context,
     address: &str,
     compilation_arguments: &CompilationArguments,
-) -> Result<Box<dyn DebuggerBackend + Send>, GearsApiError> {
+) -> Result<Box<dyn DebuggerBackend>, GearsApiError> {
     compilation_arguments
         .get_backend_mut(context)?
         .start_debug_server(address)
