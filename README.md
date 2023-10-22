@@ -13,6 +13,20 @@ A [Redis module](https://redis.io/docs/modules/) that allows running a JS functi
 docker run -p 6379:6379 redislabs/redisgears:edge
 ```
 
+## How do I Redis?
+
+[Learn for free at Redis University](https://university.redis.com/)
+
+[Build faster with the Redis Launchpad](https://launchpad.redis.com/)
+
+[Try the Redis Cloud](https://redis.com/try-free/)
+
+[Dive in developer tutorials](https://developer.redis.com/)
+
+[Join the Redis community](https://redis.com/community/)
+
+[Work at Redis](https://redis.com/company/careers/jobs/)
+
 ## Build
 
 ### With Docker
