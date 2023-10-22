@@ -95,13 +95,15 @@ lazy_static::lazy_static! {
             "isNaN",
             "console",
             "WebAssembly",
-            "Iterator",
         ],
         deny_list: [
             "eval",              // Might be considered dangerous.
             "EvalError",         // Because we remove eval, this one is also not needed.
             "SharedArrayBuffer", // Needed for workers which we are not supporting
             "Atomics",           // Needed for workers which we are not supporting
+            "Iterator",          // This one is on the deny list only on 2.0 branch as it has a potential
+                                 // of breaking rdb compatability on patch version. If a script will use it
+                                 // we will not be able to load the rdb on an older version of 2.0.
         ]
     });
 }
