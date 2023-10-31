@@ -1,4 +1,5 @@
-from common import gearsTest
+from redis import ResponseError
+from common import gearsTest, shardsConnections
 from common import Env
 from websockets.sync.client import connect
 import json
@@ -10,7 +11,7 @@ import json
 # logger.addHandler(logging.StreamHandler())
 
 # This script is used everywhere within the test.
-SCRIPT = '''#!js name=gears_example api_version=1.0
+SCRIPT = '''#!js name=gears_test_script api_version=1.0
 var redis = redis;
 
 var numberOfCalls = 0;
@@ -21,8 +22,9 @@ redis.registerFunction("foo", () => {
 
 redis.registerAsyncFunction(
   'asyncfoo', //Function name
-  function(client, args) {
+  async function(async_client, args) {
       console.log("Hello from async");
+      return "OK"
   }, //callback
   {
     description: 'description',
@@ -61,6 +63,10 @@ redis.registerStreamTrigger(
 
 """
 A short list of debugger client messages following the V8 Inspector API.
+
+For the definition:
+
+<https://chromedevtools.github.io/devtools-protocol/tot/>
 """
 class DebuggerClientMessage:
     RUNTIME_ENABLE = {
@@ -75,6 +81,21 @@ class DebuggerClientMessage:
 
     DEBUGGER_RESUME = {
         "method": "Debugger.resume",
+        "params": {}
+    }
+
+    DEBUGGER_STEP_INTO = {
+        "method": "Debugger.stepInto",
+        "params": {}
+    }
+
+    DEBUGGER_STEP_OUT = {
+        "method": "Debugger.stepOut",
+        "params": {}
+    }
+
+    DEBUGGER_STEP_OVER = {
+        "method": "Debugger.stepOver",
         "params": {}
     }
 
@@ -122,7 +143,7 @@ class Breakpoint:
     Removes this breakpoint.
     """
     def remove(self):
-        self.client.remove_breakpoint(self.data["breakpointId"])
+        self._client.remove_breakpoint(self.get_id())
 
     """
     Returns the breakpoint id.
@@ -216,8 +237,8 @@ class DebuggerClient:
     """
     Receives a single event from the server.
     """
-    def receive_event(self) -> dict:
-        return json.loads(self._websocket.recv())
+    def receive_event(self, timeout: float = None) -> dict:
+        return json.loads(self._websocket.recv(timeout))
 
     """
     Converts a python dictionary to a json dictionary, adds the
@@ -263,6 +284,14 @@ class DebuggerClient:
         return breakpoint
 
     """
+    Removes the breakpoint with the id passed.
+    """
+    def remove_breakpoint(self, breakpoint_id: str):
+        response = self.send_message(DebuggerClientMessage.remove_breakpoint(breakpoint_id))
+        self._env.assertContains("result", response[0])
+        self._env.assertEqual({}, response[0]["result"])
+
+    """
     Resumes the execution (if it was paused) and returns all the events
     in response to the resume request.
     """
@@ -283,6 +312,25 @@ class DebuggerClient:
                 self.pause = message
                 break
         return messages
+
+    """
+    Debugger: step into the stack frame.
+    """
+    def step_into(self) -> [dict]:
+        return self.send_message(DebuggerClientMessage.DEBUGGER_STEP_INTO)
+
+    """
+    Debugger: step out of the current stack frame.
+    """
+    def step_out(self) -> [dict]:
+        return self.send_message(DebuggerClientMessage.DEBUGGER_STEP_OUT)
+
+    """
+    Debugger: step over the next instruction.
+    """
+    def step_over(self) -> [dict]:
+        return self.send_message(DebuggerClientMessage.DEBUGGER_STEP_OVER)
+
 
 def deploy_script(env: Env):
     env.expect('TFUNCTION', 'DELETE', 'foo')
@@ -309,3 +357,148 @@ def testSetBreakpointAndHitIt(env: Env):
     env.assertEqual(breakpoint.get_id(), client.pause["params"]["hitBreakpoints"][0])
 
     client.disconnect()
+
+@gearsTest()
+def testSetBreakpointAndRemoveIt(env: Env):
+    deploy_script(env)
+    client = DebuggerClient(env)
+    breakpoint = client.set_breakpoint(2, 1)
+    env.assertEqual(len(client.breakpoints), 1)
+    breakpoint.remove()
+    # Now proceed from the very first instruction till the end.
+    env.assertEqual({}, client.resume()[0]["result"])
+    # The next message should be a "resumed" event from the server.
+    resumed_event = client.receive_event()
+    env.assertEqual("Debugger.resumed", resumed_event["method"])
+    # Now wait for the possible pause event to happen. It should not
+    # happen now, for we have no breakpoints set, and the script
+    # execution should just continue with no problem. We wait for
+    # five seconds to let *any* sort of execution to continue on any VM,
+    # so to avoid the flakiness of the test result.
+    try:
+        env.assertIsNone(client.receive_event(5.0))
+    except TimeoutError:
+        # Receiving a timeout error means there was no debugger pause,
+        # exactly what we expect in this case.
+        pass
+    except BaseException as e:
+        # We should not receive, however, any other sorts of error.
+        raise(e)
+
+    client.disconnect()
+
+"""
+The debugging is considered disabled, when the debug server
+address argument is not correctly specified.
+"""
+@gearsTest(debugServerAddress="")
+def testNotPossibleToDebugWhenDebuggingIsDisabled(env: Env):
+    env.expect('TFUNCTION', 'DELETE', 'foo')
+    env.expect('TFUNCTION', 'LOAD', 'debug', SCRIPT).contains('The V8 remote debugging server is waiting for a connection')
+
+def assert_load_for_debug_fails(env: Env, connection):
+    try:
+        connection.execute_command('TFUNCTION', 'DELETE', 'foo')
+    except ResponseError as e:
+        env.assertEqual(str(e), 'library does not exists')
+    except BaseException:
+        env.assertTrue(False, message="Didn't fail when it should have.")
+
+    try:
+        connection.execute_command('TFUNCTION', 'LOAD', 'debug', SCRIPT)
+    except ResponseError as e:
+        env.assertEqual("Debugging when in cluster mode isn't supported.", str(e))
+    except BaseException:
+        env.assertTrue(False, message="Didn't fail when it should have.")
+
+@gearsTest(cluster=True)
+def testNotPossibleWhenInClusterMode(env: Env, master_connection):
+    for shard_connection in shardsConnections(env):
+        assert_load_for_debug_fails(env, shard_connection)
+
+@gearsTest(withReplicas=True)
+def testNotPossibleOnReplicas(env: Env):
+    slave_connection = env.getSlaveConnection()
+    assert_load_for_debug_fails(env, slave_connection)
+
+"""
+The async functions are ran in the background, while the processing
+happens in cron. Let's see Redis can still work fine.
+"""
+@gearsTest()
+def testDebuggingAsyncFunctionInBackground(env: Env):
+    deploy_script(env)
+    client = DebuggerClient(env)
+    breakpoint = client.set_breakpoint(14, 1)
+    env.assertEqual(len(client.breakpoints), 1)
+    # Calling an asynchronous function shouldn't block the client.
+    future = env.noBlockingTfcallAsync('gears_test_script', 'asyncfoo')
+    # Now proceed from the very first instruction to the very first
+    # breakpoint we've just set.
+    client.resume_and_wait_until_pauses()
+    env.assertIsNotNone(client.pause)
+    env.assertContains("callFrames", client.pause["params"])
+    # Check that we hit the breakpoint we set above.
+    env.assertEqual(breakpoint.get_id(), client.pause["params"]["hitBreakpoints"][0])
+    breakpoint.remove()
+    client.resume()
+    future.equal("OK")
+    client.disconnect()
+
+@gearsTest()
+def testKeySpaceTriggerPaused(env: Env):
+    import threading
+    import time
+
+    deploy_script(env)
+    client = DebuggerClient(env)
+    breakpoint = client.set_breakpoint(26, 1)
+    env.assertEqual(len(client.breakpoints), 1)
+
+    def debugger_client():
+        client.resume_and_wait_until_pauses()
+
+        env.assertIsNotNone(client.pause)
+        env.assertContains("callFrames", client.pause["params"])
+        # Check that we hit the breakpoint we set above.
+        env.assertEqual(breakpoint.get_id(), client.pause["params"]["hitBreakpoints"][0])
+
+        breakpoint.remove()
+        client.disconnect()
+
+    thread = threading.Thread(target=debugger_client)
+    thread.start()
+
+    # Let's give the debugger-client thread a bit of a time.
+    time.sleep(2)
+    env.expect('SET', 'keys:*', 'value').equal(True)
+    thread.join()
+
+@gearsTest()
+def testStreamTriggerPaused(env: Env):
+    import threading
+    import time
+
+    deploy_script(env)
+    client = DebuggerClient(env)
+    breakpoint = client.set_breakpoint(43, 1)
+    env.assertEqual(len(client.breakpoints), 1)
+
+    def debugger_client():
+        client.resume_and_wait_until_pauses()
+
+        env.assertIsNotNone(client.pause)
+        env.assertContains("callFrames", client.pause["params"])
+        # Check that we hit the breakpoint we set above.
+        env.assertEqual(breakpoint.get_id(), client.pause["params"]["hitBreakpoints"][0])
+
+        breakpoint.remove()
+        client.disconnect()
+
+    thread = threading.Thread(target=debugger_client)
+    thread.start()
+
+    # Let's give the debugger-client thread a bit of a time.
+    time.sleep(2)
+    env.expect('XADD', 'stream:1', '*', 'foo', 'bar')
+    thread.join()

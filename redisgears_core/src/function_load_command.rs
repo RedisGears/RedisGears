@@ -441,6 +441,12 @@ fn function_load_with_args_with_debugger(
 
     let address = { &V8_DEBUG_SERVER_ADDRESS.lock(context) };
 
+    if address.is_empty() {
+        return Err(RedisError::Str(
+            "The debug server address was not specified in the configuration.",
+        ));
+    }
+
     if crate::get_globals_mut().debugger_server.is_some() {
         return Err(RedisError::Str(
             "Only one debugging session can be established at a time.",
