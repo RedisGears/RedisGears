@@ -547,7 +547,7 @@ pub(crate) fn function_load_on_replica(
         .ok_or(RedisError::Str("User was not provided by primary"))?;
     let compilation_arguments = CompilationArguments::new(user, args.code, args.config);
     // On replica, we always obey the primary and perform an upgrade.
-    match function_load_internal(ctx, args, false, true, true) {
+    match function_load_internal(ctx, compilation_arguments, false, true, true) {
         Ok(_) => Ok(RedisValue::SimpleStringStatic("OK")),
         Err(e) => Err(RedisError::String(e)),
     }
