@@ -10,7 +10,7 @@ redis.registerFunction("foo", () => {
 
 redis.registerAsyncFunction(
   'asyncfoo', //Function name
-  function(client, args) {
+  async function(async_client, args) {
       console.log("Hello from async")
   }, //callback
   {
