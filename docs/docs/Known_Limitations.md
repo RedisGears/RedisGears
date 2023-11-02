@@ -28,4 +28,6 @@ By design, asynchronous functions guarantee exclusive single-threaded access to 
 
 Not all the JavaScript global variables are made available by the JavaScript engine loaded by Redis (e.g. `console`, `document`). The `redis` global variable can be used to manage functions registration, logging etc. 
 
+## Sandboxed
 
+This feature is sandboxed, meaning, from within a function, it’s not possible to make calls to external services, including other Redis databases, or APIs.
