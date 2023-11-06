@@ -1275,6 +1275,23 @@ static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPl
     }
 }
 
+static void KeysReader_ServerEventCallback(RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data) {
+	if (subevent > 3) {
+		RedisModule_Log(staticCtx, "warning", "Got an unexpected subevent '%ld'", subevent);
+		return;
+	}
+	const RedisModuleString *key_name = RedisModule_GetKeyNameFromModuleKey(((RedisModuleKeyInfo*)data)->key);
+	static const char* events[] = {
+			"before_deleted",
+			"before_expired",
+			"before_evicted",
+			"before_overwritten",
+
+	};
+	const char *event = events[subevent];
+	KeysReader_OnKeyTouched(ctx, 0/*type is irelelvant, we do not use it*/, event, (RedisModuleString*)key_name);
+}
+
 static void KeysReader_RegisterKeySpaceEvent(){
     if(!keysReaderRegistration){
         keysReaderRegistration = Gears_listCreate();
@@ -1285,6 +1302,9 @@ static void KeysReader_RegisterKeySpaceEvent(){
         }
         if(RedisModule_SubscribeToKeyspaceEvents(staticCtx, event, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             RedisModule_Log(staticCtx, "warning", "Failed register on key space notification of KeysReader");
+        }
+        if(RedisModule_SubscribeToServerEvent(staticCtx, RedisModuleEvent_Key, KeysReader_ServerEventCallback) != REDISMODULE_OK){
+        	RedisModule_Log(staticCtx, "warning", "Failed register to server event to get before delete notifications, Redis version does not support it.");
         }
     }
 }

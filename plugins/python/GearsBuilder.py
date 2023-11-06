@@ -22,6 +22,7 @@ from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
 from redisgears import isAsyncAllow as isAsyncAllow
 from redisgears import flatError as flat_error
+from redisgears import registerPostNotificationJob as registerPostNotificationJob
 import asyncio
 from asyncio.futures import Future
 from threading import Thread

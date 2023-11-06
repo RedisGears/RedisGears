@@ -161,7 +161,7 @@ def gearsTest(skipTest=False,
               skipCleanups=False,
               skipOnSingleShard=False,
               skipCallback=None,
-              skipOnRedis6=False,
+              skipOnRedis=[],
               skipWithTLS=False,
               decodeResponses=True,
               executionMaxIdleTime=20000,
@@ -192,8 +192,9 @@ def gearsTest(skipTest=False,
             env.broadcast('RG.CONFIGSET', 'ExecutionMaxIdleTime', str(executionMaxIdleTime))
             conn = getConnectionByEnv(env)
             version = env.cmd('info', 'server')['redis_version']
-            if skipOnRedis6 and '6.0' in version:
-                env.skip()
+            for v in skipOnRedis:
+                if v in version:
+                    env.skip()
             test_function(env)
             if len(env.assertionFailedSummary) > 0:
                 extractInfoOnfailure(env, 'before_cleanups')
