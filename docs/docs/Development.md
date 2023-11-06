@@ -12,7 +12,7 @@ To aid in the development of new libraries of triggers and functions, you can us
 npm install https://gitpkg.now.sh/RedisGears/RedisGears/js_api
 ```
 
-Or you can add it as a dependency to your `package.json` file:
+Or you can add it as a devDependency to your `package.json` file:
 
 ```json
 "devDependencies": {
@@ -77,7 +77,7 @@ redis.registerFunction("test", ()=>{
 });
 ```
 
-To automate the deployment, update the `scripts` section in `pacakage.json`:
+To automate the deployment, update the `scripts` section in `package.json`:
 
 ```json
 "scripts": {
