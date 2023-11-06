@@ -8,7 +8,7 @@ import gears.records.KeysReaderRecord;
 
 public class testRegistersSurviveRestart {
 	public static void main() throws IOException {
-		KeysReader reader = new KeysReader();
+		KeysReader reader = new KeysReader().setEventTypes(new String[] {"set", "del"});
 		new GearsBuilder(reader).
 		filter(r->{
 			return !((KeysReaderRecord)r).getKey().contains("NumOfKeys");

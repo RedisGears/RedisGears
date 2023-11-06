@@ -64,14 +64,14 @@ def testRegistersSurviveRestart(env, conn, **kargs):
             conn.set(str(i), str(i))
 
         res = 0
-        while res < 40:
+        while res < 20:
             res = int(env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")[0][0])
 
         for i in range(20):
             conn.delete(str(i))
 
         res = 0
-        while res < 80:
+        while res < 40:
             res = int(env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")[0][0])
 
         # wait for all executions to finish
