@@ -9,10 +9,10 @@ description: >
 To aid in the development of new libraries of triggers and functions, you can use the type declaration files for the [triggers and functions API](/docs/interact/programmability/triggers-and-functions/concepts/javascript_api/), which allows your preferred development environment to provide autocompletion and type checking. You can install this information using the following command:
 
 ```bash
-npm install https://gitpkg.now.sh/RedisGears/RedisGears/js_api
+npm install https://gitpkg.now.sh/RedisGears/RedisGears/js_api --save-dev
 ```
 
-Or you can add it as a devDependency to your `package.json` file:
+Or you can manually add it as a devDependency to your `package.json` file:
 
 ```json
 "devDependencies": {
