@@ -6,7 +6,7 @@ description: >
     Execute a JavaScript function when an item is added to a stream
 ---
 
-Redis Stack's triggers and functions feature comes with a full stream API to processes data from [Redis streams](https://redis.io/docs/manual/data-types/streams/). Unlike RedisGears v1 that provided a micro batching API, the new triggers and functions feature provides a **real streaming** API, which means that the data will be processed as soon as it enters the stream.
+Redis Stack's triggers and functions feature comes with a full stream API to process data from [Redis streams](https://redis.io/docs/manual/data-types/streams/). Unlike RedisGears v1 that provided a micro batching API, the new triggers and functions feature provides a **real streaming** API, which means that the data will be processed as soon as it enters the stream.
 
 ## Register a stream consumer
 
