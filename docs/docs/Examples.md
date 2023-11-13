@@ -1,7 +1,7 @@
 ---
 title: "Triggers and functions examples"
 linkTitle: "Examples"
-weight: 6
+weight: 7
 description: >
     How triggers and functions can be used
 ---
