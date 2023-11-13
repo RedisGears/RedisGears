@@ -333,16 +333,18 @@ class DebuggerClient:
 
 
 def deploy_script(env: Env):
-    env.expect('TFUNCTION', 'DELETE', 'foo')
-    env.expect('TFUNCTION', 'LOAD', 'debug', SCRIPT).contains('The V8 remote debugging server is waiting for a connection')
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', 'debug', SCRIPT).contains('The V8 remote debugging server is waiting for a connection')
 
-@gearsTest()
+@gearsTest(debugServerAddress="127.0.0.1:9005")
 def testDeployConnectStartDisconnect(env: Env):
     deploy_script(env)
     client = DebuggerClient(env)
     client.disconnect()
 
-@gearsTest()
+    # Check that Redis still operates fine.
+    env.expect('PING').equal(True)
+
+@gearsTest(debugServerAddress="127.0.0.1:9005")
 def testSetBreakpointAndHitIt(env: Env):
     deploy_script(env)
     client = DebuggerClient(env)
@@ -358,7 +360,10 @@ def testSetBreakpointAndHitIt(env: Env):
 
     client.disconnect()
 
-@gearsTest()
+    # Check that Redis still operates fine.
+    env.expect('PING').equal(True)
+
+@gearsTest(debugServerAddress="127.0.0.1:9005")
 def testSetBreakpointAndRemoveIt(env: Env):
     deploy_script(env)
     client = DebuggerClient(env)
@@ -385,16 +390,21 @@ def testSetBreakpointAndRemoveIt(env: Env):
         # We should not receive, however, any other sorts of error.
         raise(e)
 
+    # Check that Redis still operates fine.
+    env.expect('PING').equal(True)
+
     client.disconnect()
+
+    # Check that Redis still operates fine.
+    env.expect('PING').equal(True)
 
 """
 The debugging is considered disabled, when the debug server
 address argument is not correctly specified.
 """
-@gearsTest(debugServerAddress="")
+@gearsTest()
 def testNotPossibleToDebugWhenDebuggingIsDisabled(env: Env):
-    env.expect('TFUNCTION', 'DELETE', 'foo')
-    env.expect('TFUNCTION', 'LOAD', 'debug', SCRIPT).contains('The V8 remote debugging server is waiting for a connection')
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', 'debug', SCRIPT).contains('The debug server address was not specified in the configuration.')
 
 def assert_load_for_debug_fails(env: Env, connection):
     try:
@@ -411,12 +421,12 @@ def assert_load_for_debug_fails(env: Env, connection):
     except BaseException:
         env.assertTrue(False, message="Didn't fail when it should have.")
 
-@gearsTest(cluster=True)
+@gearsTest(debugServerAddress="127.0.0.1:9005", cluster=True)
 def testNotPossibleWhenInClusterMode(env: Env, master_connection):
     for shard_connection in shardsConnections(env):
         assert_load_for_debug_fails(env, shard_connection)
 
-@gearsTest(withReplicas=True)
+@gearsTest(debugServerAddress="127.0.0.1:9005", withReplicas=True)
 def testNotPossibleOnReplicas(env: Env):
     slave_connection = env.getSlaveConnection()
     assert_load_for_debug_fails(env, slave_connection)
@@ -425,7 +435,7 @@ def testNotPossibleOnReplicas(env: Env):
 The async functions are ran in the background, while the processing
 happens in cron. Let's see Redis can still work fine.
 """
-@gearsTest()
+@gearsTest(debugServerAddress="127.0.0.1:9005")
 def testDebuggingAsyncFunctionInBackground(env: Env):
     deploy_script(env)
     client = DebuggerClient(env)
@@ -445,7 +455,7 @@ def testDebuggingAsyncFunctionInBackground(env: Env):
     future.equal("OK")
     client.disconnect()
 
-@gearsTest()
+@gearsTest(debugServerAddress="127.0.0.1:9005")
 def testKeySpaceTriggerPaused(env: Env):
     import threading
     import time
@@ -474,7 +484,7 @@ def testKeySpaceTriggerPaused(env: Env):
     env.expect('SET', 'keys:*', 'value').equal(True)
     thread.join()
 
-@gearsTest()
+@gearsTest(debugServerAddress="127.0.0.1:9005")
 def testStreamTriggerPaused(env: Env):
     import threading
     import time

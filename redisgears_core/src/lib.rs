@@ -1927,7 +1927,7 @@ mod gears_module {
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],
                 ["v8-plugin-path", &*V8_PLUGIN_PATH , "libredisgears_v8_plugin.so", ConfigurationFlags::IMMUTABLE, None],
                 ["v8-flags", &*V8_FLAGS, "'--noexpose-wasm'", ConfigurationFlags::IMMUTABLE, None],
-                ["v8-debug-server-address", &*V8_DEBUG_SERVER_ADDRESS, "127.0.0.1:9005", ConfigurationFlags::IMMUTABLE, None],
+                ["v8-debug-server-address", &*V8_DEBUG_SERVER_ADDRESS, "", ConfigurationFlags::IMMUTABLE, None],
             ],
             bool: [
                 ["enable-debug-command", &*ENABLE_DEBUG_COMMAND , false, ConfigurationFlags::IMMUTABLE, None],
