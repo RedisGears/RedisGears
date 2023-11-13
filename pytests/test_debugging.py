@@ -1,5 +1,5 @@
 from redis import ResponseError
-from common import gearsTest, shardsConnections
+from common import gearsTest, shardsConnections, toDictionary
 from common import Env
 from websockets.sync.client import connect
 import json
@@ -343,6 +343,11 @@ def testDeployConnectStartDisconnect(env: Env):
 
     # Check that Redis still operates fine.
     env.expect('PING').equal(True)
+    # After debugging the library should be deleted automatically from
+    # the database, as the only purpose it was uploaded for was to have
+    # a debugging session.
+    env.assertEqual(len(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'v'))), 0)
+
 
 @gearsTest(debugServerAddress="127.0.0.1:9005")
 def testSetBreakpointAndHitIt(env: Env):
