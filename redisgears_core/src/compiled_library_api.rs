@@ -10,22 +10,22 @@ use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryIn
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use std::collections::LinkedList;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 
 pub(crate) struct CompiledLibraryInternals {
-    mutex: Mutex<LinkedList<Box<dyn FnOnce() + Send>>>,
+    jobs: Mutex<LinkedList<Box<dyn FnOnce() + Send>>>,
 }
 
 impl CompiledLibraryInternals {
     fn new() -> CompiledLibraryInternals {
         CompiledLibraryInternals {
-            mutex: Mutex::new(LinkedList::new()),
+            jobs: Mutex::new(LinkedList::new()),
         }
     }
 
     fn run_next_job(internals: &Arc<CompiledLibraryInternals>) {
         let (job, jobs_left) = {
-            let mut queue = internals.mutex.lock().unwrap();
+            let mut queue = internals.jobs.lock().unwrap();
             let job = queue.pop_back();
             match job {
                 Some(j) => (j, queue.len()),
@@ -43,7 +43,7 @@ impl CompiledLibraryInternals {
 
     fn add_job(internals: &Arc<CompiledLibraryInternals>, job: Box<dyn FnOnce() + Send>) {
         let pending_jobs = {
-            let mut queue = internals.mutex.lock().unwrap();
+            let mut queue = internals.jobs.lock().unwrap();
             let pending_jobs = queue.len();
             queue.push_front(job);
             pending_jobs
@@ -57,8 +57,25 @@ impl CompiledLibraryInternals {
     }
 
     pub(crate) fn pending_jobs(&self) -> usize {
-        let queue = self.mutex.lock().unwrap();
+        let queue = self.jobs.lock().unwrap();
         queue.len()
+    }
+}
+
+impl std::fmt::Debug for CompiledLibraryInternals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let jobs = match self.jobs.try_lock() {
+            Ok(guard) => guard
+                .iter()
+                .map(|e| format!("{e:p}"))
+                .collect::<Vec<String>>()
+                .join(", "),
+            Err(TryLockError::Poisoned(err)) => err.to_string(),
+            Err(TryLockError::WouldBlock) => "<locked>".to_owned(),
+        };
+        f.debug_struct("CompiledLibraryInternals")
+            .field("jobs", &jobs)
+            .finish()
     }
 }
 

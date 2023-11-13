@@ -89,7 +89,7 @@ def getShardInfo(conn, log_file):
         functions = conn.execute_command('tfunction', 'list', 'vvv')
     except Exception as e:
         functions = 'Failed getting shard info, shards probably crashed.'
-    
+
     return {
         'info': info,
         'log': log,
@@ -130,10 +130,10 @@ class AsyncResponse:
             if self.future.exception():
                 raise self.future.exception()
             return self.future.result()
-        
+
     def equal(self, val):
         self.env.assertEqual(self.readResponse(), val)
-    
+
     def expectError(self, msg=''):
         try:
             res = self.readResponse()
@@ -149,14 +149,14 @@ def extendEnvWithGearsFunctionality(env):
 
     def expectTfcall(lib, func, keys=[], args=[]):
         return env.expect('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
-    
+
     def tfcall(lib, func, keys=[], args=[], c=None):
         c = c if c else env
         return c.execute_command('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
 
     def expectTfcallAsync(lib, func, keys=[], args=[]):
         return env.expect('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
-    
+
     def tfcallAsync(lib, func, keys=[], args=[], c=None):
         c = c if c else env
         return c.execute_command('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
@@ -165,19 +165,19 @@ def extendEnvWithGearsFunctionality(env):
         con = env.getConnection().connection_pool.get_connection("_")
         async_con = AIORedis(host = con.host, port = con.port, db = con.db, password = con.password, decode_responses=decodeResponses)
         return AsyncResponse(env, asyncio.run_coroutine_threadsafe(async_con.execute_command(*args), event_loop))
-    
+
     def noBlockingTfcall(lib, func, keys=[], args=[]):
         return env.noBlockingCmd('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
-    
+
     def noBlockingTfcallAsync(lib, func, keys=[], args=[]):
         return env.noBlockingCmd('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
-    
+
     def getResp3Connection():
         port = int(env.cmd('config', 'get', 'port')[1])
         # test resp3
         return Redis('localhost', port, protocol=3, decode_responses=True)
 
-    
+
     env.expectTfcall = expectTfcall
     env.tfcall = tfcall
     env.expectTfcallAsync = expectTfcallAsync
@@ -201,6 +201,7 @@ def gearsTest(skipTest=False,
               shardsCount=2,
               errorVerbosity=1,
               v8MaxMemory=None,
+              debugServerAddress=None,
               useAof=False,
               gearsConfig={},
               envArgs={}):
@@ -244,6 +245,8 @@ def gearsTest(skipTest=False,
                 module_args += ["enable-debug-command", "yes"]
             if v8MaxMemory:
                 module_args += ["v8-maxmemory", str(v8MaxMemory)]
+            if debugServerAddress:
+                module_args += ["v8-debug-server-address", str(debugServerAddress)]
             for k, v in gearsConfig.items():
                 module_args += [k, v]
             module_args += ["error-verbosity", str(errorVerbosity)]

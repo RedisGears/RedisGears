@@ -15,5 +15,6 @@ bitflags = "1"
 # this project will not be able to compromise it.
 serde = { version = "=1.0.171", features = ["derive"] }
 serde_derive = "=1.0.171"
+log = "0.4"
 
 [build-dependencies]

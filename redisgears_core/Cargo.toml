@@ -3,7 +3,7 @@ name = "redisgears_core"
 version = "99.99.99"
 edition = "2021"
 license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public License v1 (SSPLv1)"
-rust-version = "1.63"
+rust-version = "1.70"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
@@ -31,7 +31,7 @@ serde_derive = "=1.0.171"
 
 [build-dependencies]
 regex = "1"
-clap = "~2"
+clap = { version = "4", features = ["cargo"]}
 os_info = { version = "3", default-features = false }
 
 [lib]

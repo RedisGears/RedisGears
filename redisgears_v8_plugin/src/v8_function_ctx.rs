@@ -159,7 +159,7 @@ impl V8InternalFunction {
         decode_args: bool,
     ) -> FunctionCallResult {
         let isolate_scope = self.script_ctx.isolate.enter();
-        let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+        let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
 
         let res = {
@@ -243,7 +243,7 @@ impl V8InternalFunction {
         decode_arguments: bool,
     ) -> FunctionCallResult {
         let isolate_scope = self.script_ctx.isolate.enter();
-        let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+        let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
 
         let res = {
