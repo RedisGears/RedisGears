@@ -8,13 +8,13 @@ license = "LicenseRef-RSALv2 OR SSPL-1.0"
 
 [dependencies]
 redis-module = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
 v8_rs = { git = "https://github.com/RedisGears/v8-rs" }
 v8_rs_derive = { git = "https://github.com/RedisGears/v8-rs" }
 redisgears_plugin_api = { path = "../redisgears_plugin_api/" }
 redisgears-macros-internals = { path = "../redisgears_macros_internals/" }
-serde_json = "1"
-serde = { version = "1", features = ["derive"] }
-serde_derive = "1"
 lazy_static = "1"
 bitflags = "2"
 log = "0.4"

@@ -13,9 +13,9 @@ syn = { version = "1", features = ["full", "extra-traits"] }
 quote = "1"
 lazy_static = "1"
 proc-macro2 = "1"
-serde = { version = "1", features = ["derive"] }
-serde_derive = "1"
 serde_syn = "0.1"
+serde = { workspace = true }
+serde_derive = { workspace = true }
 
 [lib]
 name = "redisgears_macros_internals"
