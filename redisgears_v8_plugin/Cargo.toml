@@ -2,21 +2,19 @@
 name = "redisgears_v8_plugin"
 version = "0.1.0"
 edition = "2021"
-license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public License v1 (SSPLv1)"
+license = "LicenseRef-RSALv2 OR SSPL-1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 redis-module = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
 v8_rs = { git = "https://github.com/RedisGears/v8-rs" }
 v8_rs_derive = { git = "https://github.com/RedisGears/v8-rs" }
 redisgears_plugin_api = { path = "../redisgears_plugin_api/" }
 redisgears-macros-internals = { path = "../redisgears_macros_internals/" }
-serde_json = "1"
-# DO NOT change this exact version specification, it is required to avoid
-# the blob of serde_derive in the build.
-serde = { version = "=1.0.171", features = ["derive"] }
-serde_derive = "=1.0.171"
 lazy_static = "1"
 bitflags = "2"
 log = "0.4"

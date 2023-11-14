@@ -16,7 +16,9 @@ RUN sh install_rust.sh -y
 {% endif %}
 RUN bash -l -c "$HOME/.cargo/bin/cargo build -vv"
 RUN bash -l -c "$HOME/.cargo/bin/cargo build --release -vv"
-
+RUN bash -l -c "$HOME/.cargo/bin/cargo install cargo-deny"
+RUN bash -l -c "$HOME/.cargo/bin/cargo deny check licenses"
+RUN bash -l -c "$HOME/.cargo/bin/cargo deny check bans"
 RUN bash -l -c "$HOME/.cargo/bin/cargo test -vv"
 
 WORKDIR /build/pytests
