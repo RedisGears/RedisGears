@@ -18,12 +18,13 @@ type AckCallback = Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>;
 /// key space notification arrives.
 pub(crate) type NotificationCallback = Box<dyn Fn(&Context, &str, &[u8], AckCallback)>;
 
+#[derive(Debug)]
 pub(crate) enum ConsumerKey {
     Key(Vec<u8>),
     Prefix(Vec<u8>),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct NotificationConsumerStats {
     pub(crate) num_trigger: usize,
     pub(crate) num_success: usize,
@@ -39,6 +40,23 @@ pub(crate) struct NotificationConsumer {
     callback: Option<NotificationCallback>,
     stats: Arc<RefCellWrapper<NotificationConsumerStats>>,
     description: Option<String>,
+}
+
+impl std::fmt::Debug for NotificationConsumer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let callback = if let Some(callback) = self.callback.as_ref() {
+            format!("Some({callback:p})")
+        } else {
+            "None".to_owned()
+        };
+
+        f.debug_struct("NotificationConsumer")
+            .field("key", &self.key)
+            .field("callback", &callback)
+            .field("stats", &self.stats)
+            .field("description", &self.description)
+            .finish()
+    }
 }
 
 impl NotificationConsumer {

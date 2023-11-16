@@ -69,6 +69,7 @@ impl<'ctx> StreamProcessCtxInterface for StreamRunCtx<'ctx> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct GearsStreamRecord {
     pub(crate) record: StreamRecord,
 }
@@ -118,6 +119,17 @@ impl GearsStreamConsumer {
             flags,
             permissions,
         }
+    }
+}
+
+impl std::fmt::Debug for GearsStreamConsumer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GearsStreamConsumer")
+            .field("ctx", &format!("{:p}", &self.ctx))
+            .field("lib_meta_data", &self.lib_meta_data)
+            .field("flags", &self.flags)
+            .field("permissions", &self.permissions)
+            .finish()
     }
 }
 

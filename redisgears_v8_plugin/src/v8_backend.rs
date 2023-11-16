@@ -5,17 +5,23 @@
  */
 
 use bitflags::bitflags;
+use log::{Metadata, Record};
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
 use redisgears_macros_internals::get_allow_deny_lists;
-use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::{
+    BackendCtxInterfaceInitialised, DebuggerBackend, DebuggerBackendPayload,
+};
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{InfoSectionData, ModuleInfo};
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
+use redisgears_plugin_api::redisgears_plugin_api::GearsApiResult;
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
     backend_ctx::CompiledLibraryInterface, backend_ctx::LibraryFatalFailurePolicy,
     load_library_ctx::LibraryCtxInterface, GearsApiError,
 };
+use v8_rs::v8::inspector::server::{DebuggerSession, TcpServer, WebSocketServer};
+use v8_rs::v8::inspector::Inspector;
 use v8_rs::v8::isolate_scope::GarbageCollectionJobType;
 use v8_rs::v8::{v8_init_platform, v8_version};
 
@@ -30,10 +36,10 @@ use crate::v8_script_ctx::V8LibraryCtx;
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{HashMap, HashSet};
-use std::str;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
+use std::time::Duration;
 lazy_static::lazy_static! {
     static ref GLOBALS_ALLOW_DENY_LISTS: (HashSet<String>, HashSet<String>) = get_allow_deny_lists!({
         allow_list: [
@@ -113,6 +119,60 @@ fn allow_list() -> &'static HashSet<String> {
 fn deny_list() -> &'static HashSet<String> {
     &GLOBALS_ALLOW_DENY_LISTS.1
 }
+
+/// A "noop" logger that doesn't log anything.
+/// This logger exists only to satisfy the static requirement of the
+/// logging facility. An external logger is set for this crate in
+/// [`BackendCtxInterfaceUninitialised::initialize`]. Until this
+/// happens, we may need at least some logging implementation. For this
+/// reason, there is this "noop" implementation.
+struct NoopLogger;
+impl log::Log for NoopLogger {
+    fn enabled(&self, _: &Metadata) -> bool {
+        false
+    }
+    fn log(&self, _: &Record) {}
+    fn flush(&self) {}
+}
+
+/// A logger for this crate that filters out some
+/// unimportant-to-this-crate stuff, such as the [`tungstenite`] crate's
+/// logs. This is an implementation detail of [`v8_rs`] which we don't
+/// need here.
+struct Logger<'a>(&'a dyn log::Log);
+impl<'a> Logger<'a> {
+    const TARGET_BLACKLIST: [&'static str; 1] = ["tungstenite"];
+}
+
+impl<'a> log::Log for Logger<'a> {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        !Self::TARGET_BLACKLIST
+            .iter()
+            .any(|t| metadata.target().starts_with(t))
+    }
+
+    fn log(&self, record: &Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+
+        self.0.log(record)
+    }
+
+    fn flush(&self) {
+        // The flushing isn't required for the Redis logging.
+    }
+}
+
+/// The logger implementation for this crate. This crate has a plugin
+/// interface and is and can only be used as a plugin (so, a library
+/// loaded at runtime). For this reason, Rust cannot propagate the
+/// main crate's logger (where it is set) to the code of this crate. To
+/// address this, we require a logger to be passed in the
+/// [`BackendCtxInterfaceUninitialised::initialize`] method which is
+/// used to initialise the plugin. Until the moment of initialisation,
+/// the [`NoopLogger`] is used which does not log anything.
+static mut LOGGER: Logger = Logger(&NoopLogger);
 
 type ScriptCtxVec = Arc<Mutex<Vec<Weak<V8ScriptCtx>>>>;
 
@@ -324,8 +384,171 @@ pub(crate) fn bypass_memory_limit() -> bool {
     false
 }
 
+struct ScriptDebuggerSession {
+    session: DebuggerSession,
+    script: Arc<V8ScriptCtx>,
+}
+
+impl ScriptDebuggerSession {
+    const TIMEOUT: Duration = Duration::from_millis(500);
+
+    fn new(web_socket: WebSocketServer, script: Arc<V8ScriptCtx>) -> GearsApiResult<Self> {
+        let inspector = script
+            .inspector
+            .clone()
+            .ok_or_else(|| GearsApiError::new("No inspector available for this script."))?;
+        let isolate_scope = script.isolate.enter();
+
+        let session = DebuggerSession::new(web_socket, inspector, &isolate_scope)
+            .map_err(|e| GearsApiError::new(e.to_string()))?;
+
+        Ok(Self {
+            session,
+            script: script.clone(),
+        })
+    }
+
+    fn process_events(&self) -> GearsApiResult<bool> {
+        let isolate_scope = self.script.isolate.enter();
+
+        self.session
+            .process_messages_with_timeout(Self::TIMEOUT, &isolate_scope)
+            .map_err(|e| GearsApiError::new(e.to_string()))
+    }
+
+    fn stop(&self) {
+        self.session.stop();
+    }
+}
+
+impl std::fmt::Debug for ScriptDebuggerSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DebuggerSession")
+            .field("session", &self.session)
+            .field("script", &self.script)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+struct DebuggerSessionServer {
+    server: TcpServer,
+}
+
+#[derive(Debug)]
+enum DebuggerServer {
+    /// A state of the server when everything is prepared, but the
+    /// session hasn't been started yet. The server is ready and can
+    /// accept connections.
+    Prepared(Option<DebuggerSessionServer>),
+    /// A connection has been established, but the debugging session
+    /// hasn't been started yet.
+    Established(Box<Option<WebSocketServer>>),
+    /// A connection has been established and the debugging session is
+    /// started.
+    Started(Box<ScriptDebuggerSession>),
+}
+
+impl DebuggerServer {
+    fn prepare<T: AsRef<str>>(address: T) -> Result<Self, GearsApiError> {
+        let server =
+            TcpServer::new(address.as_ref()).map_err(|e| GearsApiError::new(e.to_string()))?;
+
+        Ok(Self::Prepared(Some(DebuggerSessionServer { server })))
+    }
+}
+
+impl DebuggerBackend for DebuggerServer {
+    fn accept_connection(&mut self) -> GearsApiResult {
+        let prepared = match self {
+            Self::Prepared(prepared) => prepared.take(),
+            _ => return Err(GearsApiError::new("The state wasn't \"Prepared\".")),
+        };
+
+        let server = prepared.ok_or(GearsApiError::new(
+            "The prepared state wasn't correctly initialised.",
+        ))?;
+
+        let web_socket = match server.server.try_accept_next_websocket_connection() {
+            Ok(web_socket) => web_socket,
+            Err((server, e)) => {
+                if e.kind() != std::io::ErrorKind::WouldBlock {
+                    return Err(GearsApiError::new(e.to_string()));
+                } else {
+                    std::mem::swap(
+                        self,
+                        &mut Self::Prepared(Some(DebuggerSessionServer { server })),
+                    );
+                    return Err(GearsApiError::new("No connection attempted."));
+                }
+            }
+        };
+        std::mem::swap(self, &mut Self::Established(Box::new(Some(web_socket))));
+        Ok(())
+    }
+
+    fn start_session(&mut self, payload: DebuggerBackendPayload) -> GearsApiResult {
+        let session = match self {
+            Self::Established(e) => {
+                let server = e.take().ok_or_else(|| {
+                    GearsApiError::new("The debugger session hasn't been established yet.")
+                })?;
+
+                let script = payload.downcast::<V8ScriptCtx>().map_err(|e| {
+                    GearsApiError::new(format!("Couldn't downcast to V8ScriptCtx: {e:?}"))
+                })?;
+                Box::new(ScriptDebuggerSession::new(server, script)?)
+            }
+            _ => {
+                return Err(GearsApiError::new(
+                    "The debugger session hasn't been established yet.",
+                ))
+            }
+        };
+        std::mem::swap(self, &mut Self::Started(session));
+        Ok(())
+    }
+
+    fn stop_session(&mut self) {
+        if let Self::Started(session) = self {
+            session.stop();
+        }
+    }
+
+    fn process_events(&mut self) -> GearsApiResult<bool> {
+        match self {
+            Self::Started(e) => e.process_events(),
+            _ => Err(GearsApiError::new(
+                "The debugger session hasn't started yet.",
+            )),
+        }
+    }
+
+    fn get_connection_hints(&self) -> Option<String> {
+        match self {
+            Self::Prepared(prepared) => prepared
+                .as_ref()
+                .and_then(|p| p.server.get_connection_hints().map(|h| h.to_string())),
+            Self::Established(established) => established
+                .as_ref()
+                .as_ref()
+                .and_then(|e| e.get_connection_hints().map(|h| h.to_string()).ok()),
+            Self::Started(session) => Some(session.session.get_connection_hints().to_string()),
+        }
+    }
+
+    fn has_accepted_connection(&self) -> bool {
+        matches!(self, Self::Established(_))
+    }
+}
+
 pub(crate) struct V8Backend {
     pub(crate) script_ctx_vec: ScriptCtxVec,
+}
+
+impl V8Backend {
+    /// The name of this backend.
+    const NAME: &str = "js";
 }
 
 fn scan_for_isolates_timeout(script_ctx_vec: &ScriptCtxVec) {
@@ -335,10 +558,11 @@ fn scan_for_isolates_timeout(script_ctx_vec: &ScriptCtxVec) {
             Some(s) => s,
             None => continue,
         };
-        if script_ctx
-            .is_running
-            .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
+        if !script_ctx.is_being_debugged()
+            && script_ctx
+                .is_running
+                .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
         {
             let interrupt_script_ctx_clone = Weak::clone(script_ctx_weak);
             script_ctx.isolate.request_interrupt(move|isolate|{
@@ -456,7 +680,7 @@ impl V8Backend {
 
 impl BackendCtxInterfaceUninitialised for V8Backend {
     fn get_name(&self) -> &'static str {
-        "js"
+        Self::NAME
     }
 
     fn on_load(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError> {
@@ -494,7 +718,16 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
 
     fn initialize(
         self: Box<Self>,
+        logger: &'static dyn log::Log,
     ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
+        unsafe {
+            LOGGER.0 = logger;
+
+            log::set_logger(&LOGGER)
+                .map(|()| log::set_max_level(log::LevelFilter::Trace))
+                .expect("Couldn't set the logger");
+        }
+
         self.initialize_v8_engine()?;
         self.spawn_background_maintenance_thread()?;
 
@@ -503,6 +736,10 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
 }
 
 impl BackendCtxInterfaceInitialised for V8Backend {
+    fn get_name(&self) -> &'static str {
+        Self::NAME
+    }
+
     fn get_version(&self) -> String {
         format!(
             "Version: {}, v8-rs: {}, profile:{}",
@@ -514,6 +751,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
     fn compile_library(
         &mut self,
+        debug: bool,
         module_name: &str,
         code: &str,
         api_version: ApiVersion,
@@ -529,10 +767,15 @@ impl BackendCtxInterfaceInitialised for V8Backend {
         let isolate = V8Isolate::new_with_limits(initial_memory_usage(), initial_memory_limit());
 
         let script_ctx = {
-            let (ctx, script, tensor_obj_template) = {
+            let (ctx, script, tensor_obj_template, inspector) = {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
+                let inspector = if debug {
+                    Some(Inspector::new(&ctx_scope))
+                } else {
+                    None
+                };
 
                 let globals = ctx_scope.get_globals();
                 if !(get_global_option().contains(GlobalOptions::AVOID_GLOBALS_ALLOW_LIST)) {
@@ -558,22 +801,21 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let v8code_str = isolate_scope.new_string(code);
 
                 let trycatch = isolate_scope.new_try_catch();
-                let script = match ctx_scope.compile(&v8code_str) {
-                    Some(s) => s,
-                    None => {
-                        return Err(get_exception_msg(&isolate, trycatch, &ctx_scope));
-                    }
-                };
+                let script = ctx_scope
+                    .compile(&v8code_str)
+                    .ok_or(get_exception_msg(&isolate, trycatch, &ctx_scope))?;
 
                 let script = script.persist();
                 let tensor_obj_template = get_tensor_object_template(&isolate_scope);
-                (ctx, script, tensor_obj_template)
+                (ctx, script, tensor_obj_template, inspector)
             };
+
             let script_ctx = Arc::new(V8ScriptCtx::new(
                 module_name.to_owned(),
                 isolate,
                 ctx,
                 script,
+                inspector.map(Arc::new),
                 tensor_obj_template,
                 compiled_library_api,
             ));
@@ -589,7 +831,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
             }
             {
                 let isolate_scope = script_ctx.isolate.enter();
-                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
+                let ctx_scope = script_ctx.context.enter(&isolate_scope);
                 let globals = ctx_scope.get_globals();
 
                 let oom_script_ctx = Arc::downgrade(&script_ctx);
@@ -803,5 +1045,9 @@ impl BackendCtxInterfaceInitialised for V8Backend {
             sections
         };
         Some(ModuleInfo { sections })
+    }
+
+    fn start_debug_server(&self, address: &str) -> Result<Box<dyn DebuggerBackend>, GearsApiError> {
+        Ok(Box::new(DebuggerServer::prepare(address)?))
     }
 }

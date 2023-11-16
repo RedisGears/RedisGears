@@ -36,7 +36,7 @@ impl V8NotificationsCtxInternal {
     ) {
         let res = {
             let isolate_scope = self.script_ctx.isolate.enter();
-            let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+            let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
             let try_catch = isolate_scope.new_try_catch();
 
             let notification_data = data.take_local(&isolate_scope);
@@ -111,7 +111,7 @@ impl V8NotificationsCtxInternal {
     ) {
         let res = {
             let isolate_scope = self.script_ctx.isolate.enter();
-            let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+            let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
             let trycatch = isolate_scope.new_try_catch();
 
             let notification_data = data.take_local(&isolate_scope);
@@ -209,7 +209,7 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
 
         let data = {
             let isolate_scope = self.internal.script_ctx.isolate.enter();
-            let ctx_scope = self.internal.script_ctx.ctx.enter(&isolate_scope);
+            let ctx_scope = self.internal.script_ctx.context.enter(&isolate_scope);
             let try_catch = isolate_scope.new_try_catch();
 
             let notification_data = isolate_scope.new_object();
