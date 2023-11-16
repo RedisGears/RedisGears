@@ -1,5 +1,5 @@
 [workspace]
-
+resolver = "2"
 members = [
     "redisgears_core",
     "redisgears_plugin_api",
@@ -7,8 +7,10 @@ members = [
     "redisai_rs",
     "redisgears_macros_internals"
 ]
-resolver = "2"
 
 [workspace.dependencies]
 redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
 redis-module-macros = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+serde_derive = "1"

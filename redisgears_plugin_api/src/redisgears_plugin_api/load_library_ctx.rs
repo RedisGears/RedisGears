@@ -13,6 +13,9 @@ use crate::redisgears_plugin_api::run_function_ctx::RemoteFunctionData;
 use crate::redisgears_plugin_api::stream_ctx::StreamCtxInterface;
 use crate::redisgears_plugin_api::GearsApiError;
 
+use super::backend_ctx::DebuggerBackendPayload;
+use super::GearsApiResult;
+
 pub const FUNCTION_FLAG_NO_WRITES_GLOBAL_NAME: &str = "NO_WRITES";
 pub const FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE: &str = "no-writes";
 
@@ -42,6 +45,7 @@ pub struct ModuleInfo {
 }
 
 pub trait LibraryCtxInterface {
+    /// Evaluates the library code.
     fn load_library(
         &self,
         load_library_ctx: &dyn LoadLibraryCtxInterface,
@@ -49,6 +53,10 @@ pub trait LibraryCtxInterface {
     ) -> Result<(), GearsApiError>;
 
     fn get_info(&self) -> Option<ModuleInfo>;
+
+    /// Returns an opaque object useful for debugging. See
+    /// [super::backend_ctx::DebuggerBackend::start].
+    fn get_debug_payload(&self) -> GearsApiResult<DebuggerBackendPayload>;
 }
 
 pub enum RegisteredKeys<'a> {

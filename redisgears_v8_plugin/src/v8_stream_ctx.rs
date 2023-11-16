@@ -60,7 +60,7 @@ impl V8StreamCtxInternals {
         ack_callback: Box<dyn FnOnce(StreamRecordAck) + Send>,
     ) -> Option<StreamRecordAck> {
         let isolate_scope = self.script_ctx.isolate.enter();
-        let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+        let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
 
         let id = record.get_id();
@@ -198,7 +198,7 @@ impl V8StreamCtxInternals {
     ) {
         let res = {
             let isolate_scope = self.script_ctx.isolate.enter();
-            let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+            let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
             let trycatch = isolate_scope.new_try_catch();
 
             let id = record.get_id();

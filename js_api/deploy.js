@@ -11,13 +11,16 @@ import commonjs from '@rollup/plugin-commonjs';
 await new Command('deploy')
   .argument('<filename>')
   .option('-r, --redis [redis]')
+  .option('-d, --debug')
   .option('-w, --watch')
-  .action(async (filename, { redis, watch }) => {
+  .action(async (filename, { redis, debug, watch }) => {
     const client = createClient({ url: redis });
     client.on('error', err => console.error('Redis client error', err));
     await client.connect();
 
-    return (watch ? watchAndDeploy : buildAndDeploy)(client, {
+    var handler = watch ? watchAndDeploy : debug ? buildAndDeployAndDebug : buildAndDeploy;
+
+    return handler(client, {
       input: {
         file: resolve(process.cwd(), filename)
       },
@@ -33,6 +36,14 @@ await new Command('deploy')
 async function buildAndDeploy(client, rollupOptions) {
   try {
     await deploy(client, await rollup.rollup(rollupOptions));
+  } finally {
+    await client.quit();
+  }
+}
+
+async function buildAndDeployAndDebug(client, rollupOptions) {
+  try {
+    await deploy(client, await rollup.rollup(rollupOptions), true);
   } finally {
     await client.quit();
   }
@@ -58,12 +69,26 @@ async function watchAndDeploy(client, rollupOptions) {
   });
 }
 
-async function deploy(client, result) {
+async function deploy(client, result, debug) {
   try {
-    const { output: [{ code }] } = await result.generate({ format: 'es' });
-    await client.sendCommand(['TFUNCTION', 'LOAD', 'REPLACE', code]);
-    console.log('Deployed! :)');
+    var args = ['TFUNCTION', 'LOAD', 'REPLACE']
+    if (debug === true) {
+      args.push('debug')
+      const { output: [{ code }] } = await result.generate({ format: 'es', sourcemap: 'inline' });
+      args.push(code)
+    } else {
+      const { output: [{ code }] } = await result.generate({ format: 'es' });
+      args.push(code)
+    }
+    var result = await client.sendCommand(args);
+    if (debug === true) {
+      console.log(result)
+    } else {
+      console.log('Deployed! :)');
+    }
   } catch (err) {
     console.error('Deploy error', err);
   }
 }
+
+

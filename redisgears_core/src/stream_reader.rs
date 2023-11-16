@@ -109,7 +109,7 @@ impl TrackedStream {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct ConsumerInfo {
     pub(crate) last_processed_time: u128, // last processed time in ms
     pub(crate) total_processed_time: u128, // last processed time in ms
@@ -158,6 +158,32 @@ pub(crate) struct ConsumerData<T: StreamReaderRecord, C: StreamConsumer<T>> {
     pub(crate) on_record_acked: Option<Box<RecordAcknowledgeCallback>>,
     pub(crate) description: Option<String>,
     phantom: std::marker::PhantomData<T>,
+}
+
+impl<T, C> std::fmt::Debug for ConsumerData<T, C>
+where
+    T: StreamReaderRecord + std::fmt::Debug,
+    C: StreamConsumer<T> + std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let struct_name = format!(
+            "ConsumerData<T = {}, C = {}>",
+            std::any::type_name::<T>(),
+            std::any::type_name::<C>(),
+        );
+        f.debug_struct(&struct_name)
+            .field("prefix", &self.prefix)
+            .field("consumer", &self.consumer)
+            .field("consumed_streams", &self.consumed_streams)
+            .field("window", &self.window)
+            .field("trim", &self.trim)
+            .field(
+                "on_record_acked",
+                &self.on_record_acked.as_ref().map(|e| format!("{e:p}")),
+            )
+            .field("description", &self.description)
+            .finish()
+    }
 }
 
 impl<T, C> ConsumerData<T, C>

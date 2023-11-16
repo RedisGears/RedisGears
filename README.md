@@ -2,6 +2,7 @@
 
 [![GitHub Builds](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml/badge.svg)](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml)
 [![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
+[![Documentation](https://img.shields.io/badge/documentation-redis)](https://redis.io/docs/interact/programmability/triggers-and-functions/)
 
 A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes. The `JS` code is execute use [V8 `JS` engine](https://v8.dev/).
 
@@ -105,9 +106,10 @@ And now we can invoke `my_ping` using [`TFCALL`](docs/commands/tfcall.md) :
 "PONG"
 ```
 
-### Whats next?
+### What's next?
 
 * [Quick Start](docs/docs/Quick_Start.md)
+* [Official documentation](https://redis.io/docs/interact/programmability/triggers-and-functions/)
 * [Commands](https://redis.io/commands)
 * [Configuration](docs/docs/Configuration.md)
 * [Sync and Async Run](docs/docs/concepts/Sync_Async.md)

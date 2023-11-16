@@ -87,6 +87,7 @@ mod background_run_ctx;
 mod background_run_scope_guard;
 mod compiled_library_api;
 mod config;
+mod debugging;
 mod function_del_command;
 mod function_list_command;
 mod function_load_command;
@@ -218,6 +219,17 @@ impl GearsFunctionCtx {
     }
 }
 
+impl std::fmt::Debug for GearsFunctionCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GearsFunctionCtx")
+            .field("func", &format!("{:p}", &self.func))
+            .field("flags", &self.flags)
+            .field("is_async", &self.is_async)
+            .field("description", &self.description)
+            .finish()
+    }
+}
+
 /// The gears library runtime context. It contains the live "instance"
 /// of the global library state: all the functions registered and other
 /// state information.
@@ -234,6 +246,48 @@ struct GearsLibraryCtx {
     old_lib: Option<Arc<GearsLibrary>>,
 }
 
+impl GearsLibraryCtx {
+    /// Creates a new [GearsLibraryCtx].
+    fn new(meta_data: Arc<GearsLibraryMetaData>, old_library: Option<Arc<GearsLibrary>>) -> Self {
+        Self {
+            meta_data,
+            functions: HashMap::new(),
+            remote_functions: HashMap::new(),
+            stream_consumers: HashMap::new(),
+            notifications_consumers: HashMap::new(),
+            revert_stream_consumers: Vec::new(),
+            revert_notifications_consumers: Vec::new(),
+            old_lib: old_library,
+        }
+    }
+
+    /// Returns a loader ([GearsLoadLibraryCtx]) for this [GearsLibraryCtx].
+    pub(crate) fn get_loader<'a>(&'a mut self, ctx: &'a Context) -> GearsLoadLibraryCtx {
+        GearsLoadLibraryCtx {
+            ctx,
+            gears_lib_ctx: self,
+        }
+    }
+}
+
+impl std::fmt::Debug for GearsLibraryCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO: add more fields.
+
+        f.debug_struct("GearsLibraryCtx")
+            .field("meta_data", &self.meta_data)
+            .field("functions", &self.functions)
+            // .field("remote_functions", &self.remote_functions)
+            .field("stream_consumers", &self.stream_consumers)
+            // .field("revert_stream_consumers", &self.revert_notifications_consumers)
+            .field("notifications_consumers", &self.notifications_consumers)
+            // .field("revert_notifications_consumers", &self.revert_notifications_consumers)
+            .field("old_lib", &self.old_lib)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 struct GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
     ctx: &'ctx Context,
     gears_lib_ctx: &'lib_ctx mut GearsLibraryCtx,
@@ -243,6 +297,16 @@ struct GearsLibrary {
     gears_lib_ctx: GearsLibraryCtx,
     lib_ctx: Box<dyn LibraryCtxInterface>,
     compile_lib_internals: Arc<CompiledLibraryInternals>,
+}
+
+impl std::fmt::Debug for GearsLibrary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GearsLibrary")
+            .field("gears_lib_ctx", &self.gears_lib_ctx)
+            .field("lib_ctx", &format!("{:p}", &self.lib_ctx))
+            .field("compile_lib_internals", &self.compile_lib_internals)
+            .finish()
+    }
 }
 
 impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
@@ -543,6 +607,7 @@ struct GlobalCtx {
     db_policy: DbPolicy,
     future_handlers: HashMap<String, Vec<Weak<RedisGILGuard<FutureHandlerContext>>>>,
     avoid_replication_traffic: bool,
+    debugger_server: Option<debugging::Server>,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -571,12 +636,6 @@ fn get_globals() -> &'static GlobalCtx {
 
 fn get_globals_mut() -> &'static mut GlobalCtx {
     unsafe { GLOBALS.as_mut().unwrap() }
-}
-
-/// Returns the global redis module context after the module has been
-/// initialized.
-fn get_backends_mut() -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceInitialised>> {
-    &mut get_globals_mut().backends
 }
 
 /// Returns mutable reference to the uninitialised backends dictionary.
@@ -720,7 +779,7 @@ pub(crate) fn call_redis_command_async<'ctx>(
                 globals
                     .future_handlers
                     .entry(lib)
-                    .or_insert(Vec::new())
+                    .or_default()
                     .push(Arc::downgrade(&future_handler_context));
 
                 // Set the unblock handler which will call the plugin callback and free the `future_handler_context`
@@ -854,33 +913,17 @@ fn load_v8_backend(
 }
 
 fn initialize_v8_backend(
-    _ctx: &Context,
     uninitialised_backend: Box<dyn BackendCtxInterfaceUninitialised>,
 ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
     let name = uninitialised_backend.get_name();
-    let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> =
-        uninitialised_backend.initialize().map_err(|e| {
+    let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> = uninitialised_backend
+        .initialize(log::logger())
+        .map_err(|e| {
             RedisError::String(format!("Failed loading {} backend, {}.", name, e.get_msg()))
         })?;
     let version = initialised_backend.get_version();
     log::info!("Initialized backend: {name}, {version}.");
     Ok(initialised_backend)
-}
-
-pub(crate) fn get_backend(
-    ctx: &Context,
-    name: &str,
-) -> Result<&'static mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
-    get_backends_mut()
-        .get_mut(name)
-        .ok_or(RedisError::Str("No such backend"))
-        .or_else(|_| {
-            let uninitialised_backend = get_uninitialised_backends_mut()
-                .remove(name)
-                .ok_or_else(|| RedisError::String(format!("Unknown backend {}", name)))?;
-            let backend = initialize_v8_backend(ctx, uninitialised_backend)?;
-            Ok(get_backends_mut().entry(name.to_owned()).or_insert(backend))
-        })
 }
 
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
@@ -1037,6 +1080,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         db_policy: get_db_policy(ctx),
         future_handlers: HashMap::new(),
         avoid_replication_traffic: false,
+        debugger_server: None,
     };
 
     unsafe { GLOBALS = Some(global_ctx) };
@@ -1091,7 +1135,7 @@ fn build_backend_module_info(ctx: &InfoContext, info: ModuleInfo) -> RedisResult
 }
 
 fn build_initialised_backends_info(ctx: &InfoContext) -> RedisResult<()> {
-    get_backends_mut()
+    ctx.get_backends_mut()
         .values_mut()
         .filter_map(|b| b.get_info())
         .try_for_each(|info| build_backend_module_info(ctx, info))
@@ -1315,6 +1359,39 @@ fn function_call_command(
     }
 }
 
+/// Backend-related functionality.
+pub(crate) trait GILBackendStorage {
+    /// Returns a reference to an initialised backend found by name.
+    fn get_backend(
+        &self,
+        name: &str,
+    ) -> Result<&'static mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
+        self.get_backends_mut()
+            .get_mut(name)
+            .ok_or(RedisError::String(format!("No such backend: {name}")))
+            .or_else(|_| {
+                let uninitialised_backend = get_uninitialised_backends_mut()
+                    .remove(name)
+                    .ok_or_else(|| RedisError::String(format!("Unknown backend {name}")))?;
+                let backend = initialize_v8_backend(uninitialised_backend)?;
+                Ok(self
+                    .get_backends_mut()
+                    .entry(name.to_owned())
+                    .or_insert(backend))
+            })
+    }
+
+    /// Returns the map of initialisied backends, accessed by their name.
+    fn get_backends_mut(
+        &self,
+    ) -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceInitialised>> {
+        &mut get_globals_mut().backends
+    }
+}
+
+impl GILBackendStorage for Context {}
+impl GILBackendStorage for InfoContext {}
+
 fn function_debug_command(
     ctx: &Context,
     mut args: Skip<IntoIter<redis_module::RedisString>>,
@@ -1376,7 +1453,7 @@ fn function_debug_command(
         }
         _ => (),
     }
-    let backend = get_backend(ctx, backend_name).map_or(
+    let backend = ctx.get_backend(backend_name).map_or(
         Err(RedisError::String(format!(
             "Backend '{}' does not exists or not yet loaded",
             backend_name
@@ -1546,7 +1623,7 @@ fn on_config_change(ctx: &Context, values: &[&str]) {
 }
 
 /// Will be called by Redis to execute some repeated tasks.
-/// Currently we will clean future handlers that has been finised.
+/// Currently we will clean future handlers that has been finished.
 #[cron_event_handler]
 fn cron_event_handler(ctx: &Context, _hz: u64) {
     let globals = get_globals_mut();
@@ -1576,6 +1653,23 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
         }
     }
     globals.avoid_replication_traffic = ctx.avoid_replication_traffic();
+
+    let mut should_stop_debugger = false;
+    if let Some(debugger_backend) = globals.debugger_server.as_mut() {
+        match debugger_backend.process_events(ctx) {
+            Ok(true) => should_stop_debugger = true,
+            Err(e) => {
+                log::error!("Debugger error: {e}");
+                should_stop_debugger = true;
+            }
+            _ => {}
+        }
+    }
+
+    if should_stop_debugger {
+        log::info!("The debugger server connection was dropped. Releasing the debugger.");
+        let _ = globals.debugger_server.take();
+    }
 }
 
 pub(crate) fn verify_name(name: &str) -> Result<(), String> {
@@ -1603,8 +1697,9 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
 fn verify_internal_command(ctx: &Context) -> Result<(), RedisError> {
     let flags = ctx.get_flags();
     let globals = get_globals();
-    if !flags.contains(ContextFlags::LOADING)
-        && !(flags.contains(ContextFlags::REPLICATED) || globals.db_policy.is_pseudo_slave())
+    if !(flags.contains(ContextFlags::LOADING)
+        || flags.contains(ContextFlags::REPLICATED)
+        || globals.db_policy.is_pseudo_slave())
     {
         // Internal commands should either be loaded from AOF ([`ContextFlags::LOADING`])
         // or sent over the replication stream([`ContextFlags::REPLICATED`]).
@@ -1764,8 +1859,9 @@ macro_rules! get_allocator {
 mod gears_module {
     use super::*;
     use config::{
-        GEARS_BOX_ADDRESS, REMOTE_TASK_DEFAULT_TIMEOUT, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
-        V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY,
+        GEARS_BOX_ADDRESS, REMOTE_TASK_DEFAULT_TIMEOUT, V8_DEBUG_SERVER_ADDRESS,
+        V8_LIBRARY_INITIAL_MEMORY_LIMIT, V8_LIBRARY_INITIAL_MEMORY_USAGE,
+        V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY,
     };
     use rdb::REDIS_GEARS_TYPE;
     use redis_module::configuration::ConfigurationFlags;
@@ -1831,6 +1927,7 @@ mod gears_module {
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],
                 ["v8-plugin-path", &*V8_PLUGIN_PATH , "libredisgears_v8_plugin.so", ConfigurationFlags::IMMUTABLE, None],
                 ["v8-flags", &*V8_FLAGS, "'--noexpose-wasm'", ConfigurationFlags::IMMUTABLE, None],
+                ["v8-debug-server-address", &*V8_DEBUG_SERVER_ADDRESS, "", ConfigurationFlags::IMMUTABLE, None],
             ],
             bool: [
                 ["enable-debug-command", &*ENABLE_DEBUG_COMMAND , false, ConfigurationFlags::IMMUTABLE, None],

@@ -6,6 +6,8 @@
 
 use std::cell::RefCell;
 
+use redis_module::RedisError;
+
 pub mod backend_ctx;
 pub mod function_ctx;
 pub mod keys_notifications_consumer_ctx;
@@ -14,6 +16,9 @@ pub mod prologue;
 pub mod redisai_interface;
 pub mod run_function_ctx;
 pub mod stream_ctx;
+
+/// A [Result] type for the Gears API.
+pub type GearsApiResult<R = ()> = Result<R, GearsApiError>;
 
 #[derive(Debug, Clone)]
 pub struct GearsApiError {
@@ -48,6 +53,18 @@ impl GearsApiError {
     }
 }
 
+impl From<GearsApiError> for RedisError {
+    fn from(value: GearsApiError) -> Self {
+        RedisError::String(value.msg)
+    }
+}
+
+impl From<RedisError> for GearsApiError {
+    fn from(value: RedisError) -> Self {
+        Self::new(value.to_string())
+    }
+}
+
 impl std::fmt::Display for GearsApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.msg)
@@ -61,6 +78,17 @@ pub enum FunctionCallResult {
 
 pub struct RefCellWrapper<T> {
     pub ref_cell: RefCell<T>,
+}
+
+impl<T> std::fmt::Debug for RefCellWrapper<T>
+where
+    T: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(&format!("RefCellWrapper<{}>", std::any::type_name::<T>()))
+            .field("ref_cell", &self.ref_cell)
+            .finish()
+    }
 }
 
 unsafe impl<T> Sync for RefCellWrapper<T> {}

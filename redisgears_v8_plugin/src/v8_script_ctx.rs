@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::DebuggerBackendPayload;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{InfoSectionData, ModuleInfo};
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::CompiledLibraryInterface, load_library_ctx::LibraryCtxInterface,
@@ -11,6 +12,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 
 use v8_derive::new_native_function;
+use v8_rs::v8::inspector::Inspector;
 use v8_rs::v8::isolate_scope::V8IsolateScope;
 use v8_rs::v8::v8_context_scope::V8ContextScope;
 use v8_rs::v8::v8_promise::V8LocalPromise;
@@ -22,7 +24,7 @@ use v8_rs::v8::{
     v8_promise::V8PromiseState, v8_script::V8PersistedScript,
 };
 
-use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
+use redisgears_plugin_api::redisgears_plugin_api::{GearsApiResult, RefCellWrapper};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
@@ -32,11 +34,13 @@ use std::time::SystemTime;
 
 use crate::{get_error_from_object, get_exception_msg};
 
+#[derive(Debug)]
 pub(crate) enum GilState {
     Lock,
     Unlock,
 }
 
+#[derive(Debug)]
 pub(crate) struct GilStateCtx {
     state: GilState,
     lock_time: SystemTime,
@@ -127,8 +131,11 @@ pub(crate) struct V8ScriptCtx {
     /// Tensors API for RedisAI integrations.
     pub(crate) tensor_object_template: V8PersistedObjectTemplate,
 
+    /// The V8 Inspector (used for debugging).
+    pub(crate) inspector: Option<Arc<Inspector>>,
+
     /// The V8 context
-    pub(crate) ctx: V8Context,
+    pub(crate) context: V8Context,
 
     /// The V8 isolate
     pub(crate) isolate: V8Isolate,
@@ -150,6 +157,25 @@ pub(crate) struct V8ScriptCtx {
     pub(crate) lock_state: RefCellWrapper<GilStateCtx>,
 }
 
+impl std::fmt::Debug for V8ScriptCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("V8ScriptCtx")
+            .field("name", &self.name)
+            .field("script", &self.script)
+            .field("tensor_object_template", &self.tensor_object_template)
+            .field("ctx", &self.context)
+            .field("isolate", &self.isolate)
+            .field("inspector", &self.inspector)
+            .field(
+                "compiled_library_api",
+                &format!("{:p}", &self.compiled_library_api),
+            )
+            .field("is_running", &self.is_running)
+            .field("lock_state", &self.lock_state)
+            .finish()
+    }
+}
+
 pub(crate) struct OnDoneCtx<'isolate_scope, 'isolate, 'ctx_scope> {
     pub(crate) isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
     pub(crate) ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
@@ -162,16 +188,18 @@ impl V8ScriptCtx {
         isolate: V8Isolate,
         ctx: V8Context,
         script: V8PersistedScript,
+        inspector: Option<Arc<Inspector>>,
         tensor_object_template: V8PersistedObjectTemplate,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Self {
         Self {
             name,
             isolate,
-            ctx,
+            context: ctx,
             script,
             tensor_object_template,
             compiled_library_api,
+            inspector,
             is_running: AtomicBool::new(false),
             is_being_loaded_from_rdb: AtomicBool::new(false),
             lock_state: RefCellWrapper {
@@ -204,6 +232,11 @@ impl V8ScriptCtx {
     /// it to an atomic boolean indicating whether or not a JS code is running.
     pub(crate) fn after_run(&self, val: bool) {
         self.is_running.store(val, Ordering::Relaxed);
+    }
+
+    /// Returns [`true`] if the script is being debugged.
+    pub(crate) fn is_being_debugged(&self) -> bool {
+        self.inspector.is_some()
     }
 
     /// Perform necessary operation after locking Redis GIL like saving
@@ -463,19 +496,29 @@ impl LibraryCtxInterface for V8LibraryCtx {
         is_being_loaded_from_rdb: bool,
     ) -> Result<(), GearsApiError> {
         let isolate_scope = self.script_ctx.isolate.enter();
-        let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+        let ctx_scope = self.script_ctx.context.enter(&isolate_scope);
         let trycatch = isolate_scope.new_try_catch();
+
+        if let Some(inspector) = self.script_ctx.inspector.as_ref() {
+            inspector
+                .guard(&isolate_scope)
+                .and_then(|i| i.schedule_pause_on_next_statement("Pause on load."))
+                .map_err(|e| GearsApiError::new(e.to_string()))?;
+        }
 
         let script = self
             .script_ctx
             .script
             .to_local(&isolate_scope)
-            .map_err(|e| GearsApiError::new(e.to_string()))?;
+            .map_err(GearsApiError::new)?;
 
         let _rdb_loading_guard = self.script_ctx.mark_loading_rdb(is_being_loaded_from_rdb);
 
         // set private content
-        let _load_library_guard = self.script_ctx.ctx.set_private_data(0, &load_library_ctx);
+        let _load_library_guard = self
+            .script_ctx
+            .context
+            .set_private_data(0, &load_library_ctx);
 
         let res = self.script_ctx.run(&script, &ctx_scope, GilStatus::Locked);
 
@@ -523,5 +566,9 @@ impl LibraryCtxInterface for V8LibraryCtx {
             sections
         };
         Some(ModuleInfo { sections })
+    }
+
+    fn get_debug_payload(&self) -> GearsApiResult<DebuggerBackendPayload> {
+        Ok(self.script_ctx.clone())
     }
 }
