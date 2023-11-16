@@ -2,6 +2,7 @@
 
 [![GitHub Builds](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml/badge.svg)](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml)
 [![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
+[![Documentation](https://img.shields.io/badge/documentation-redis)](https://redis.io/docs/interact/programmability/triggers-and-functions/)
 
 A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes. The `JS` code is execute use [V8 `JS` engine](https://v8.dev/).
 
@@ -12,6 +13,20 @@ A [Redis module](https://redis.io/docs/modules/) that allows running a JS functi
 ```bash
 docker run -p 6379:6379 redislabs/redisgears:edge
 ```
+
+## How do I Redis?
+
+[Learn for free at Redis University](https://university.redis.com/)
+
+[Build faster with the Redis Launchpad](https://launchpad.redis.com/)
+
+[Try the Redis Cloud](https://redis.com/try-free/)
+
+[Dive in developer tutorials](https://developer.redis.com/)
+
+[Join the Redis community](https://redis.com/community/)
+
+[Work at Redis](https://redis.com/company/careers/jobs/)
 
 ## Build
 
@@ -91,9 +106,10 @@ And now we can invoke `my_ping` using [`TFCALL`](docs/commands/tfcall.md) :
 "PONG"
 ```
 
-### Whats next?
+### What's next?
 
 * [Quick Start](docs/docs/Quick_Start.md)
+* [Official documentation](https://redis.io/docs/interact/programmability/triggers-and-functions/)
 * [Commands](https://redis.io/commands)
 * [Configuration](docs/docs/Configuration.md)
 * [Sync and Async Run](docs/docs/concepts/Sync_Async.md)
