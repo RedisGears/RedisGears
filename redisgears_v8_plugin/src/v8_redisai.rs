@@ -209,7 +209,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             }
                         };
                         let isolate_scope = script_ctx_ref.isolate.enter();
-                        let ctx_scope = script_ctx_ref.ctx.enter(&isolate_scope);
+                        let ctx_scope = script_ctx_ref.context.enter(&isolate_scope);
                         let resolver = persisted_resolver.take_local(&isolate_scope).as_resolver();
 
                         match res {
@@ -291,7 +291,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             }
                         };
                         let isolate_scope = script_ctx_ref.isolate.enter();
-                        let ctx_scope = script_ctx_ref.ctx.enter(&isolate_scope);
+                        let ctx_scope = script_ctx_ref.context.enter(&isolate_scope);
 
                         let resolver = persisted_resolver.take_local(&isolate_scope).as_resolver();
 

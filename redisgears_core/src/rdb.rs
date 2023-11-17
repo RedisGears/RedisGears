@@ -5,7 +5,8 @@
  */
 
 use crate::{
-    function_load_command::function_load_internal, get_globals, get_globals_mut, get_libraries,
+    function_load_command::{function_load_internal, CompilationArguments},
+    get_globals, get_globals_mut, get_libraries,
 };
 
 use mr::libmr::{calc_slot, is_my_slot};
@@ -130,7 +131,8 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
 
         // allow upgrade on pseudo_slave (replica-of) because we might get the same function multiple time from different source shards.
         let is_pseudo_slave = get_globals().db_policy.is_pseudo_slave();
-        match function_load_internal(ctx, user, &code, config, is_pseudo_slave, true) {
+        let compilation_arguments = CompilationArguments::new(user, code, config);
+        match function_load_internal(ctx, compilation_arguments, false, is_pseudo_slave, true) {
             Ok(_) => {}
             Err(e) => return Err(Error::generic(&format!("Failed loading librart, {}", e))),
         }
