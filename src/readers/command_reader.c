@@ -5,6 +5,9 @@
 #include "lock_handler.h"
 #include "version.h"
 #include "cluster.h"
+#include "command_hook.h"
+#include "readers_common.h"
+#include "mgmt.h"
 
 #include <string.h>
 
@@ -46,6 +49,8 @@ typedef struct CommandReaderTriggerCtx{
     size_t numSuccess;
     size_t numFailures;
     size_t numAborted;
+    size_t lastRunDuration;
+    size_t totalRunDuration;
     char* lastError;
     Gears_dict* pendingExections;
     Gears_listNode* listNode;
@@ -176,6 +181,8 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .numSuccess = 0,
             .numFailures = 0,
             .numAborted = 0,
+            .lastRunDuration = 0,
+            .totalRunDuration = 0,
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
             .listNode = NULL,
@@ -202,6 +209,10 @@ CommandReaderTriggerCtx* CommandReaderTriggerCtx_Get(ExecutionCtx* eCtx){
 CommandReaderTriggerCtx* CommandReaderTriggerCtx_GetShallowCopy(CommandReaderTriggerCtx* crtCtx){
     __atomic_add_fetch(&crtCtx->refCount, 1, __ATOMIC_SEQ_CST);
     return crtCtx;
+}
+
+static void CommandReaderTriggerCtx_ResetStats(CommandReaderTriggerCtx* crtCtx){
+    resetStats(crtCtx);
 }
 
 void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
@@ -347,14 +358,43 @@ static int CommandReader_InnerRegister(FlatExecutionPlan* fep, ExecutionMode mod
     return REDISMODULE_OK;
 }
 
-static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
+static int CommandReader_VerifyRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     CommandReaderTriggerArgs* crtArgs = args;
     switch(crtArgs->triggerType){
     case TriggerType_Trigger:
         if(CommandRegistrations){
-            if(Gears_dictFetchValue(CommandRegistrations, crtArgs->trigger)){
-                *err = RG_STRDUP("trigger already registered");
-                return REDISMODULE_ERR;
+            CommandReaderTriggerCtx* crtCtx = Gears_dictFetchValue(CommandRegistrations, crtArgs->trigger);
+            if(crtCtx) {
+                // verify that this registration is not going to be removed, if it does we will allow it.
+                if (srctx) {
+                    int found = 0;
+                    for (size_t i = 0 ; i < array_len(srctx->idsToUnregister) ; ++i) {
+                        if (strcmp(srctx->idsToUnregister[i], crtCtx->fep->idStr) == 0) {
+                            found = 1;
+                        }
+                    }
+                    if (!found) {
+                        *err = RG_STRDUP("trigger already registered");
+                        return REDISMODULE_ERR;
+                    }
+                }
+            }
+        }
+        // verify that we do not have another registration on this session with this same trigger
+        if (srctx) {
+            for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
+                RegistrationData *rd = srctx->registrationsData + i;
+                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(rd->fep->reader->reader);
+                if (callbacks->verifyRegister == CommandReader_VerifyRegister) {
+                    // another command reader found, check its arguments.
+                    CommandReaderTriggerArgs* crtArgs2 = rd->args;
+                    if (crtArgs2->triggerType == TriggerType_Trigger){
+                        if (strcmp(crtArgs2->trigger, crtArgs->trigger) == 0) {
+                            *err = RG_STRDUP("trigger already registered in this session");
+                            return REDISMODULE_ERR;
+                        }
+                    }
+                }
             }
         }
         break;
@@ -388,11 +428,48 @@ static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode 
                 return REDISMODULE_ERR;
             }
         }
+        if (HookRegistrations) {
+            Gears_list* list = Gears_dictFetchValue(HookRegistrations, crtArgs->trigger);
+            if (list) {
+                CommandReaderTriggerCtx* next = Gears_listNodeValue(Gears_listFirst(list));
+                if(next->mode != ExecutionModeSync){
+                    *err = RG_STRDUP("Can not override a none sync registration");
+                    return REDISMODULE_ERR;
+                }
+            }
+        }
+        // lets also verify that we do not have another none sync registration that hook this command
+        if (srctx) {
+            for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
+                RegistrationData *rd = srctx->registrationsData + i;
+                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(rd->fep->reader->reader);
+                if (callbacks->verifyRegister == CommandReader_VerifyRegister) {
+                    // another command reader found, check its arguments.
+                    CommandReaderTriggerArgs* crtArgs2 = rd->args;
+                    if (crtArgs2->triggerType == TriggerType_Hook){
+                        if (strcmp(crtArgs2->hookData.hook, crtArgs->hookData.hook) == 0) {
+                            if (rd->mode != ExecutionModeSync){
+                                *err = RG_STRDUP("Can not override a none sync registration which already created on this session");
+                                return REDISMODULE_ERR;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         break;
     default:
         RedisModule_Assert(false);
     }
+    return REDISMODULE_OK;
+}
 
+static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
+    if (CommandReader_VerifyRegister(NULL, fep, mode, args, err) != REDISMODULE_OK) {
+        return REDISMODULE_ERR;
+    }
+
+    CommandReaderTriggerArgs* crtArgs = args;
     return CommandReader_InnerRegister(fep, mode, crtArgs, err);
 }
 
@@ -576,6 +653,9 @@ static void CommandReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModu
     RedisModule_InfoAddFieldULongLong(ctx, "numSuccess", crtCtx->numSuccess);
     RedisModule_InfoAddFieldULongLong(ctx, "numFailures", crtCtx->numFailures);
     RedisModule_InfoAddFieldULongLong(ctx, "numAborted", crtCtx->numAborted);
+    RedisModule_InfoAddFieldULongLong(ctx, "lastRunDurationMS", DURATION2MS(crtCtx->lastRunDuration));
+    RedisModule_InfoAddFieldULongLong(ctx, "totalRunDurationMS", totalDurationMS(crtCtx));
+    RedisModule_InfoAddFieldDouble(ctx, "avgRunDurationMS", avgDurationMS(crtCtx));
     RedisModule_InfoAddFieldCString(ctx, "lastError", crtCtx->lastError ? crtCtx->lastError : "None");
     RedisModule_InfoAddFieldCString(ctx, "trigger", crtCtx->args->trigger);
     RedisModule_InfoAddFieldULongLong(ctx, "inorder", crtCtx->args->inOrder);
@@ -584,7 +664,7 @@ static void CommandReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModu
 static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     CommandReaderTriggerCtx* crtCtx = CommandReader_FindByFep(fep);
     RedisModule_Assert(crtCtx);
-    RedisModule_ReplyWithArray(ctx, 14);
+    RedisModule_ReplyWithArray(ctx, 20);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(crtCtx->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
@@ -603,6 +683,12 @@ static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutio
     RedisModule_ReplyWithLongLong(ctx, crtCtx->numFailures);
     RedisModule_ReplyWithStringBuffer(ctx, "numAborted", strlen("numAborted"));
     RedisModule_ReplyWithLongLong(ctx, crtCtx->numAborted);
+    RedisModule_ReplyWithStringBuffer(ctx, "lastRunDurationMS", strlen("lastRunDurationMS"));
+    RedisModule_ReplyWithLongLong(ctx, DURATION2MS(crtCtx->lastRunDuration));
+    RedisModule_ReplyWithStringBuffer(ctx, "totalRunDurationMS", strlen("totalRunDurationMS"));
+    RedisModule_ReplyWithLongLong(ctx, totalDurationMS(crtCtx));
+    RedisModule_ReplyWithStringBuffer(ctx, "avgRunDurationMS", strlen("avgRunDurationMS"));
+    RedisModule_ReplyWithDouble(ctx, avgDurationMS(crtCtx));
     RedisModule_ReplyWithStringBuffer(ctx, "lastError", strlen("lastError"));
     if(crtCtx->lastError){
         RedisModule_ReplyWithStringBuffer(ctx, crtCtx->lastError, strlen(crtCtx->lastError));
@@ -747,6 +833,36 @@ static int CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
     return REDISMODULE_OK;
 }
 
+static void CommandReader_ClearStats(){
+    // clear triggers
+    if(CommandRegistrations){
+        Gears_dictIterator *iter = Gears_dictGetIterator(CommandRegistrations);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            CommandReaderTriggerCtx* crtCtx = Gears_dictGetVal(entry);
+            CommandReaderTriggerCtx_ResetStats(crtCtx);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+
+    // clear hooks
+    if(HookRegistrations){
+        Gears_dictIterator *iter = Gears_dictGetIterator(HookRegistrations);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            Gears_list* l = Gears_dictGetVal(entry);
+            Gears_listIter* listIter = Gears_listGetIterator(l, AL_START_HEAD);
+            Gears_listNode* node = NULL;
+            while((node = Gears_listNext(listIter))){
+                CommandReaderTriggerCtx* crtCtx = Gears_listNodeValue(node);
+                CommandReaderTriggerCtx_ResetStats(crtCtx);
+            }
+            Gears_listReleaseIterator(listIter);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+}
+
 static void CommandReader_Clear(){
     // clear triggers
     if(CommandRegistrations){
@@ -790,6 +906,7 @@ static void CommandReader_FreeArgs(void* args){
 
 RedisGears_ReaderCallbacks CommandReader = {
         .create = CommandReader_Create,
+        .verifyRegister = CommandReader_VerifyRegister,
         .registerTrigger = CommandReader_RegisrterTrigger,
         .unregisterTrigger = CommandReader_UnregisterTrigger,
         .serializeTriggerArgs = CommandReader_SerializeArgs,
@@ -800,6 +917,7 @@ RedisGears_ReaderCallbacks CommandReader = {
         .rdbSave = CommandReader_RdbSave,
         .rdbLoad = CommandReader_RdbLoad,
         .clear = CommandReader_Clear,
+        .clearStats = CommandReader_ClearStats,
 };
 
 typedef enum RctxType{
@@ -860,6 +978,8 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
     CommandReaderTriggerCtx* crtCtx = privateData;
 
     long long errorsLen = RedisGears_GetErrorsLen(ep);
+    crtCtx->lastRunDuration = FlatExecutionPlan_GetExecutionDuration(ep);
+    crtCtx->totalRunDuration += crtCtx->lastRunDuration;
 
     Gears_dictDelete(crtCtx->pendingExections, ep->idStr);
 
@@ -894,6 +1014,23 @@ static void CommandReader_ExectionHoldingCallback(ExecutionPlan* ep, void* priva
 }
 
 static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    /* Handle getkeys-api introspection */
+    if (RedisModule_IsKeysPositionRequest(ctx)) {
+        if (currTCtx) {
+            // Only on command hook we want to check for keys
+            if (RMAPI_FUNC_SUPPORTED(RedisModule_GetCommandKeys)) {
+                CommandHook_DeclareKeys(ctx, argv + 1, argc - 1);
+            } else {
+                // fallback to calculate key ourself to support old redis versions.
+                CommandReaderTriggerArgs* triggerArgs = currTCtx->args;
+
+                CommandReaderTriggerInfo* info = &(triggerArgs->hookData.info);
+                CommandHook_DeclareKeysLegacy(ctx, argc - 1, info->firstKey, info->lastKey, info->jump);
+            }
+        }
+        return REDISMODULE_OK;
+    }
+
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
     }
@@ -936,13 +1073,16 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         onDoneCallback = CommandReader_OnDoneHookReply;
     }
 
+    int runFlags = 0;
     int ctxFlags = RedisModule_GetContextFlags(ctx);
-    if(crtCtx->mode != ExecutionModeSync){
-        if((ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) ||
-                (ctxFlags & REDISMODULE_CTX_FLAGS_LUA)){
-            RedisModule_ReplyWithError(ctx, "ERR can not run a none sync execution inside MULTI/LUA or on loading.");
+    if((ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) ||
+       (ctxFlags & REDISMODULE_CTX_FLAGS_LUA) ||
+       (ctxFlags & REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
+        if(crtCtx->mode != ExecutionModeSync){
+            RedisModule_ReplyWithError(ctx, "ERR can not run a non-sync execution inside a MULTI/LUA (blocking is not allowed) or on loading.");
             return REDISMODULE_OK;
         }
+        runFlags |= RFNoAsync;
     }
 
     if(crtCtx->mode == ExecutionModeAsync){
@@ -951,8 +1091,8 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1, crtCtx);
-    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone,
-                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), crtCtx->wd, &err);
+    ExecutionPlan* ep = RedisGears_RunWithFlags(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone,
+                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), crtCtx->wd, &err, runFlags);
 
     ++crtCtx->numTriggered;
 
@@ -972,7 +1112,9 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         replyCallback(ep, ctx);
         RedisGears_DropExecution(ep);
     } else {
-        RedisModule_Assert(crtCtx->mode != ExecutionModeSync);
+        RedisModule_Assert(!(ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) &&
+                           !(ctxFlags & REDISMODULE_CTX_FLAGS_LUA) &&
+                           !(ctxFlags & REDISMODULE_CTX_FLAGS_DENY_BLOCKING));
         if(EPIsFlagOn(ep, EFIsLocal)){
             Gears_dictAdd(crtCtx->pendingExections, ep->idStr, NULL);
         }
@@ -993,7 +1135,8 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
 #define GEARS_OVERRIDE_COMMAND "rg.trigger"
 static RedisModuleString* GearsOverrideCommand = NULL;
-static Gears_listNode* startNode = NULL;
+static Gears_dict* startNodes = NULL;
+static Gears_listNode noOveride;
 
 void CommandReader_CommandFilter(RedisModuleCommandFilterCtx *filter){
     if(!HookRegistrations){
@@ -1004,11 +1147,15 @@ void CommandReader_CommandFilter(RedisModuleCommandFilterCtx *filter){
         return;
     }
 
-    Gears_listNode* node = startNode;
+    const RedisModuleString* cmd = RedisModule_CommandFilterArgGet(filter, 0);
+    const char* cmdCStr = RedisModule_StringPtrLen(cmd, NULL);
+    Gears_listNode* node = Gears_dictFetchValue(startNodes, cmdCStr);
+
+    if (node == &noOveride) {
+        return;
+    }
 
     if(!node){
-        const RedisModuleString* cmd = RedisModule_CommandFilterArgGet(filter, 0);
-        const char* cmdCStr = RedisModule_StringPtrLen(cmd, NULL);
         Gears_list* l = Gears_dictFetchValue(HookRegistrations, cmdCStr);
         if(!l){
             // command not found
@@ -1079,14 +1226,20 @@ void CommandReader_CommandFilter(RedisModuleCommandFilterCtx *filter){
 }
 
 int CommandReader_Initialize(RedisModuleCtx* ctx){
+    startNodes = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     GearsOverrideCommand = RedisModule_CreateString(NULL, GEARS_OVERRIDE_COMMAND, strlen(GEARS_OVERRIDE_COMMAND));
     RedisModuleCommandFilter *cmdFilter = RedisModule_RegisterCommandFilter(ctx, CommandReader_CommandFilter, 0);
 
-    // this command is considered readonly but it might actaully write data to redis
+    // this command is considered readonly but it might actually write data to Redis
     // using rm_call. In this case the effect of the execution is replicated
     // and not the execution itself.
-    if (RedisModule_CreateCommand(ctx, GEARS_OVERRIDE_COMMAND, CommandReader_Trigger, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(staticCtx, "warning", "could not register command rg.command");
+    if (RedisModule_CreateCommand(ctx, GEARS_OVERRIDE_COMMAND, CommandReader_Trigger, "getkeys-api readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command "GEARS_OVERRIDE_COMMAND);
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.triggeronkey", CommandReader_Trigger, "readonly", 2, 2, 1) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.triggeronkey");
         return REDISMODULE_ERR;
     }
     return REDISMODULE_OK;
@@ -1096,12 +1249,14 @@ RedisModuleCallReply* CommandReaderTriggerCtx_CallNext(CommandReaderTriggerCtx* 
     if(!crtCtx->listNode){
         return NULL;
     }
-    startNode = Gears_listNextNode(crtCtx->listNode);
-    if(!startNode){
-        noOverride = true;
+    Gears_listNode* oldStartNode = Gears_dictFetchValue(startNodes, crtCtx->args->hookData.hook);
+    Gears_listNode* startNode = Gears_listNextNode(crtCtx->listNode);
+    if (startNode) {
+        Gears_dictReplace(startNodes, crtCtx->args->hookData.hook, startNode);
+    } else {
+        Gears_dictReplace(startNodes, crtCtx->args->hookData.hook, &noOveride);
     }
-    RedisModuleCallReply *rep = RedisModule_Call(staticCtx, crtCtx->args->trigger, "!v", argv, argc);
-    startNode = NULL;
-    noOverride = false;
+    RedisModuleCallReply *rep = RedisModule_Call(staticCtx, crtCtx->args->hookData.hook, "!v", argv, argc);
+    Gears_dictReplace(startNodes, crtCtx->args->hookData.hook, oldStartNode);
     return rep;
 }

@@ -18,12 +18,18 @@ The following sections describe the supported commands.
 | [`RG.INFOCLUSTER`](#rginfocluster) | Returns cluster information |
 | [`RG.PYEXECUTE`](#rgpyexecute) | Executes Python functions and registers functions for event-driven processing |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
+| [`RG.PYDUMPSESSIONS`](#rgpydumpsessions) | Returns a summery of existing python sessions |
+| [`RG.PYPROFILE STATS`](#rgpyprofilestats) | Returns a profiling statistics for a given session id |
+| [`RG.PYPROFILE RESET`](#rgpyprofilereset) | Reset profiling statistics for a given session id |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes a node's view of the cluster |
-| [`RG.PYDUMPREQS`](#rgpystats) | Returns detailed information about requirements |
+| [`RG.PYDUMPREQS`](#rgpydumpreqs) | Returns detailed information about requirements |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
->>>>>>> master
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
+| [`RG.TRIGGERONKEY`](#rgtriggeronkey) | Triggers execution of registration on a given key |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
+| [`RG.CLEARREGISTRATIONSSTATS`](#rgclearregistrationsstats) | Clears stats from all registrations |
+| [`RG.PAUSEREGISTRATIONS`](#rgpauseregistrations) | Pause a registrations by ids |
+| [`RG.UNPAUSEREGISTRATIONS`](#rgunpauseregistrations) | Unpause a registrations by ids |
 
 **Syntax Conventions**
 
@@ -75,7 +81,7 @@ _Arguments_
 
 _Return_
 
-An array with an entry per key. The entry is a String being the value or an error for undefined options.
+An array with an entry per key. The entry is a string being the value or an error for undefined options.
 
 **Examples**
 
@@ -87,7 +93,7 @@ redis> RG.CONFIGGET foo
 ```
 
 ## RG.CONFIGSET
-The **`RG.CONFIGGET`** command sets the value of one ore more built-in [configuration](configuration.md) or a user-defined options.
+The **`RG.CONFIGSET`** command sets the value of one ore more built-in [configuration](configuration.md) or user-defined options.
 
 **Redis API**
 
@@ -150,11 +156,11 @@ RG.DUMPEXECUTIONS
 
 _Return_
 
-An array with an entry per execution. Each entry is made of alternating key name and value entries as follows:
+An array containing an entry per execution. Entry consist of alternating key names and value entries as follows:
 
 * **executionId**: the [execution ID](functions.md#execution-id)
 * **status**: the [status](functions.md#execution-status)
-* **registered**: indicates whether this is a [registered execution](functions.html#registration)
+* **registered**: indicates whether this is a [registered execution](functions.md#registration)
 
 **Examples**
 
@@ -196,6 +202,11 @@ An array with an entry per registration. Each entry is made of alternating key n
     * **numSuccess**: a counter of successful executions
     * **numFailures**: a counter of failed executions
     * **numAborted**: a counter of aborted executions
+    * **lastRunDurationMS**: duration in milliseconds of the last execution
+    * **totalRunDurationMS**: total run time in milliseconds
+    * **avgRunDurationMS**: average execution runtime in milliseconds
+    * **lastEstimatedLagMS**: Only on Streams, give the last batch lag (the time difference from the moment the first batch entry enters the stream to the time the batch was finished processing)
+    * **avgEstimatedLagMS**: Only on Streams, average lag.
     * **lastError**: the last error returned
     * **args**: reader-specific arguments
 * **PD**: private data
@@ -450,18 +461,23 @@ The **RG.PYEXECUTE** command executes a Python [function](functions.md#function)
 **Redis API**
 
 ```
-RG.PYEXECUTE "<function>" [UNBLOCKING] [REQUIREMENTS "<dep> ..."]
+RG.PYEXECUTE "<function>" [UNBLOCKING] [ID <id>] [DESCRIPTION <description>] [UPGRADE] [REPLACE_WITH id] [REQUIREMENTS "<dep> ..."]
 ```
 
 _Arguments_
 
 * _function_: the Python function
 * _UNBLOCKING_: doesn't block the client during execution
+* _ID_: [Session](glossary.html#session) unique ID (if not given, RedisGears will generate one)
+* _DESCRIPTION_: Optional [Session](glossary.html#session) description
+* _UPGRADE_: If the session with this name already exists, replace it.
+* _REPLACE_WITH_: Set the new [Session](glossary.html#session) as a replacement of the session give by this argument.
+* _FORCE_REINSTALL_REQUIREMENTS_: Force re-installation of all the requirements. When this option is used, RedisGears will reset the python interpreter module cache after re-installation is finished. The python interpreter then reloads the modules. An important limitation of this option is that **It is not possible to have multiple versions of the same requirement at the same time**. If one registration uses an old version of a requirement and another registration upgrades it, then after a restart (or before, on some rare cases) both will have the new version. If the new version is **not** backwards compatible **the code may fail due to errors**. This option is available as of v1.2.4.
 * _REQUIREMENTS_: this argument ensures that list of dependencies it is given as an argument is installed on each shard before execution
 
 _Return_
 
-An error is returned if the function can't be parsed, as well as any that are generated by non-RedisGears functions used.
+An error is returned if the function can't be parsed, in addition to those generated by non-RedisGears functions used.
 
 When used in `UNBLOCKING` mode reply is an [execution ID](functions.md#execution-id).
 
@@ -504,6 +520,174 @@ redis> RG.PYSTATS
 4) (integer) 8432603
 5) "CurrAllocated"
 6) (integer) 5745816
+```
+
+## RG.PYDUMPSESSIONS
+The **RG.PYDUMPSESSIONS** command returns a summary of existing python [sessions](glossary.html#session). A python session is created whenever the [RG.PYEXECUTE](#rgpyexecute) command is invoked, and then shared with all registrations/executions created by this command.
+
+**Redis API**
+
+```
+RG.PYDUMPSESSIONS [TS] [VERBOSE] [SESSIONS s1 s2 ...]
+```
+
+_Arguments_
+
+* _TS_: see session which was deleted but not yet freed (because there is still executions which created by the session and was not yet finished).
+* _VERBOSE_: see a full information about requirements and registrations.
+* _SESSIONS_: must be given last. When specified, return only sessions that appears in the list.
+
+_Return_
+
+An array that consists of alternating key name and value entries representing information about the session.
+
+**Examples**
+
+```
+127.0.0.1:6379> RG.PYDUMPSESSIONS
+1)  1) "ID"
+    1) "test"
+    2) "sessionDescription"
+    3) (nil)
+    4) "refCount"
+    5) (integer) 1
+    6) "Linked"
+    7) "true"
+    8) "TS"
+   1)  "false"
+   2)  "requirementInstallationNeeded"
+   3)  (integer) 0
+   4)  "requirements"
+   5)  (empty array)
+   6)  "registrations"
+   7)  1) "0000000000000000000000000000000000000000-3"
+127.0.0.1:6379> RG.PYDUMPSESSIONS VERBOSE SESSIONS test
+1)  1) "ID"
+    2) "test"
+    3) "sessionDescription"
+    4) (nil)
+    5) "refCount"
+    6) (integer) 1
+    7) "Linked"
+    8) "true"
+    9) "TS"
+   10) "false"
+   11) "requirementInstallationNeeded"
+   12) (integer) 0
+   13) "requirements"
+   14) (empty array)
+   15) "registrations"
+   16) 1)  1) "id"
+           2) "0000000000000000000000000000000000000000-3"
+           3) "reader"
+           4) "CommandReader"
+           5) "desc"
+           6) (nil)
+           7) "RegistrationData"
+           8)  1) "mode"
+               2) "async"
+               3) "numTriggered"
+               4) (integer) 1
+               5) "numSuccess"
+               6) (integer) 1
+               7) "numFailures"
+               8) (integer) 0
+               9) "numAborted"
+              10) (integer) 0
+              11) "lastRunDurationMS"
+              12) (integer) 0
+              13) "totalRunDurationMS"
+              14) (integer) 0
+              15) "avgRunDurationMS"
+              16) "0"
+              17) "lastError"
+              18) (nil)
+              19) "args"
+              20) 1) "trigger"
+                  2) "test"
+                  3) "inorder"
+                  4) (integer) 0
+           9) "ExecutionThreadPool"
+          10) "DefaultPool"
+```
+
+## RG.PYPROFILE STATS
+The **RG.PYPROFILE STATS** command returns profiling statistics for a [session](glossary.html#session) id. Profiling information is automatically collected when [ProfileExecutions](configuration.md#profileexecutions) are enabled.
+
+**Redis API**
+
+```
+RG.PYPROFILE STATS <session_id> [<order_by>]
+```
+
+_Arguments_
+
+* _session_id_: the [session id](#rgpydumpsessions) to get the profiling statistics on.
+* _order_by_: result ordering column, see [cProfile](https://docs.python.org/3.7/library/profile.html#pstats.Stats).
+
+_Return_
+
+String contains the collected profiling information.
+
+**Output Example**
+
+```
+16 function calls in 2.003 seconds
+
+   Ordered by: internal time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        2    2.002    1.001    2.002    1.001 {built-in method time.sleep}
+        4    0.000    0.000    0.000    0.000 <string>:289(profileStop)
+        2    0.000    0.000    0.000    0.000 <string>:173(<lambda>)
+        2    0.000    0.000    2.002    1.001 <string>:1(<lambda>)
+        2    0.000    0.000    0.000    0.000 {built-in method builtins.__import__}
+        4    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+
+
+   Ordered by: internal time
+
+Function                                          was called by...
+                                                      ncalls  tottime  cumtime
+{built-in method time.sleep}                      <-       2    2.002    2.002  <string>:1(<lambda>)
+<string>:289(profileStop)                         <-
+<string>:173(<lambda>)                            <-
+<string>:1(<lambda>)                              <-
+{built-in method builtins.__import__}             <-       2    0.000    0.000  <string>:1(<lambda>)
+{method 'disable' of '_lsprof.Profiler' objects}  <-       4    0.000    0.000  <string>:289(profileStop)
+
+
+   Ordered by: internal time
+
+Function                                          called...
+                                                      ncalls  tottime  cumtime
+{built-in method time.sleep}                      ->
+<string>:289(profileStop)                         ->       4    0.000    0.000  {method 'disable' of '_lsprof.Profiler' objects}
+<string>:173(<lambda>)                            ->
+<string>:1(<lambda>)                              ->       2    0.000    0.000  {built-in method builtins.__import__}
+                                                           2    2.002    2.002  {built-in method time.sleep}
+{built-in method builtins.__import__}             ->
+{method 'disable' of '_lsprof.Profiler' objects}  ->
+```
+
+## RG.PYPROFILE RESET
+The **RG.PYPROFILE RESET** command resets profiling statistics for a given [session](glossary.html#session) id.
+
+**Redis API**
+
+```
+RG.PYPROFILE RESET <session_id>
+```
+
+_Return_
+
+A simple 'OK' string.
+
+**Examples**
+
+```
+redis> RG.PYPROFILE RESET 0000000000000000000000000000000000000000-0
+OK
 ```
 
 ## RG.PYDUMPREQS
@@ -591,6 +775,36 @@ redis> RG.TRIGGER mytrigger foo bar
 1) "['mytrigger', 'foo', 'bar']"
 ```
 
+## RG.TRIGGERONKEY
+The **RG.TRIGGERONKEY** command is the same as **RG.TRIGGER**, the difference is that the third argument is considered a key so client will know how to direct the command to the correct shard.
+
+**Redis API**
+
+```
+RG.TRIGGERONKEY <trigger> key [arg ...]
+```
+
+_Arguments_
+
+* **trigger**: the trigger's name
+* **key**: a key on which the trigger is executed on
+* **arg**: any additional arguments
+
+_Return_
+
+An array containing the function's output records.
+
+**Examples**
+
+```
+redis> RG.PYEXECUTE "GB('CommandReader').map(lambda x: execute('set', x[1], x[2])).register(trigger='my_set')"
+OK
+redis> RG.TRIGGERONKEY my_set foo bar
+1) "OK"
+redis> get foo
+bar
+```
+
 ## RG.UNREGISTER
 The **RG.UNREGISTER** command removes the [registration](functions.md#registration) of a function.
 
@@ -607,3 +821,59 @@ _Arguments_
 _Return_
 
 A simple 'OK' string, or an error. An error is returned if the registration ID doesn't exist or if the function's reader doesn't support the unregister operation.
+
+## RG.CLEARREGISTRATIONSSTATS
+The **RG.CLEARREGISTRATIONSSTATS** command clear stats from all the registrations, cleared stats:
+
+* numTriggered
+* numSuccess
+* numFailures
+* numAborted
+* lastRunDurationMS
+* avgRunDurationMS
+* avgRunDurationMS
+* lastEstimatedLagMS (on streams)
+* avgEstimatedLagMS (on streams)
+
+**Redis API**
+
+```
+RG.CLEARREGISTRATIONSSTATS
+```
+
+_Return_
+
+A simple 'OK' string.
+
+## RG.PAUSEREGISTRATIONS
+The **RG.PAUSEREGISTRATIONS** command pause a given registrations from triggering any more events. **Currently its only possible to pause a stream registrations**. pause a registration that already pause is consider as no op and will keep the state exactly as it is (without any errors). pause is considered an atomic operation, all the registrations that was given will be pause together and if one failed, the entire operation is aborted (atomicity is promised on the shard level and not on the cluster level).
+
+It is also possible to pause the registration from within the registration code itself by returning a special error message that starts with `PAUSE` string (message must be raised with [flatError](runtime.md#flat-error) api so the error trace will not be added to the error message), example:
+
+```python
+GB('StreamReader').foreach(lambda x: flatError('PAUSE registration is paused')).register()
+```
+
+**Redis API**
+
+```
+RG.PAUSEREGISTRATIONS id1 [id2 ...]
+```
+
+_Return_
+
+A simple 'OK' string. Or error if operation failed.
+
+## RG.UNPAUSEREGISTRATIONS
+The **RG.UNPAUSEREGISTRATIONS** command unpause a given registrations and cause it to restart triggering events. **Currently its only possible to unpause a stream registrations**. Unpause a registration that already running is consider as no op and will keep the state exactly as it is (without any errors). Unpause is considered an atomic operation, all the registrations that was given will be unpause together and if one failed, the entire operation is aborted (atomicity is promised on the shard level and not on the cluster level). Unpausing a registration will restart processing data from the stream, if the stream is not set to trim messages (using trimStream option) then all the element will potentially be processed again.
+
+**Redis API**
+
+```
+RG.UNPAUSEREGISTRATIONS id1 [id2 ...]
+```
+
+_Return_
+
+A simple 'OK' string. Or error if operation failed.
+

@@ -28,7 +28,7 @@ You can set your configuration options when the module is loaded. The options ar
 
 **Runtime Configuration**
 
-You may set certain configuration options at runtime. Refer to each option's description for runtime configurability.
+You may set certain configuration options at runtime. Refer to each option's description for runtime configuration.
 
 !!! abstract "Related commands"
     The following RedisGears commands are related to configuration:
@@ -118,6 +118,24 @@ _Default Value_
 _Runtime Configurability_
 
 Supported
+
+## OverridePythonAllocators
+The **OverridePythonAllocators** configuration option controls whether RedisGears will override the default python memory allocators. Disabling this option, causes the python interpreter to increase performance (in some cases we saw improvement of up to 50%), the disadvantage is that the output of [RG.PYSTATS](commands.md#rgpystats) becomes invalid, and Redis will be unable to track and report memory usage by the python interpreter.
+
+!!! important "Notice"
+    Available as of v1.2.4
+
+_Expected Value_
+
+0 (disabled) or 1 (enabled)
+
+_Default Value_
+
+"1"
+
+_Runtime Configurability_
+
+Not Supported
 
 ## DownloadDeps
 The **DownloadDeps** configuration option determines whether RedisGears will attempt to download missing Python dependencies.
@@ -253,3 +271,19 @@ _Default Value_
 _Runtime Configurability_
 
 Supported
+
+## Plugin
+The **Plugin** configuration option allows to specify which RedisGears plugin you want to load. Usually a RedisGears plugin is the same as language support. Currently RedisGears supports python and java (jvm languages). The **Plugin** configuration options tells RedisGears which language plugins to load.
+
+_Expected Value_
+
+String
+
+_Default Value_
+
+No default
+
+_Runtime Configurability_
+
+Not Supported
+

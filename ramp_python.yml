@@ -1,0 +1,43 @@
+display_name: RedisGears
+author: RedisLabs
+email: meir@redislabs.com
+description: Dynamic execution framework for your Redis data
+homepage: 'http://redisgears.io'
+license: Redis Source Available License Agreement
+command_line_args: "Plugin gears_python CreateVenv 1"
+min_redis_version: '6.0.0'
+min_redis_pack_version: '6.0.12'
+config_command: "RG.CONFIGSET"
+capabilities:
+    - types
+    - crdb 
+    - failover_migrate
+    - persistence_aof
+    - persistence_rdb
+    - clustering
+    - backup_restore
+    - reshard_rebalance
+    - eviction_expiry
+    - intershard_tls
+    - intershard_tls_pass
+    - ipv6
+exclude_commands:
+    - rg.configset
+    - RG.INNERUNREGISTER
+    - RG.INNERREGISTER
+    - RG.INNERMSGCOMMAND
+    - rg.example
+    - rg.refreshcluster
+    - rg.infocluster
+    - rg.hello
+    - rg.networktest
+    - rg.pyfreeinterpreter
+overide_command:
+    - {"command_arity": -1, "command_name": "rg.trigger", "first_key": 2, "flags": ["readonly"], "last_key": 2, "step": 1}
+add_command:
+    - {"command_arity": -1, "command_name": "rg.jexecute", "first_key": 0, "flags": ["readonly"], "last_key": 0, "step": -1}
+    - {"command_arity": -1, "command_name": "rg.jdumpsessions", "first_key": 0, "flags": ["readonly"], "last_key": 0, "step": 0}
+dependencies:
+    gears_python:
+        url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_PYTHON_FNAME}}
+        sha256: {{GEARS_PYTHON_SHA256}}

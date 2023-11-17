@@ -53,6 +53,7 @@ You can control the reader's event operation as follows:
   * Prefix: generates records only for key names that start with the prefix
   * Events: same, but only for whitelisted events
   * Types: same, but only for whitelisted data types
+  * Commands: same, but only for whitelisted commands
   * Read value: a Boolean specifying whether the value is read or not
 
 **Python API**
@@ -73,18 +74,19 @@ _Arguments_
 
 ```python
 class GearsBuilder('KeysReader').register(prefix='*', eventTypes=None,
-  keyTypes=None, readValue=True)
+  keyTypes=None, commands=None, readValue=True)
 ```
 
 _Arguments_
 
 * _prefix_: a prefix of key names
 * _eventTypes_: a whitelist of event types that trigger execution when the [KeysReader](readers.md#keysreader) are used. The list may contain one or more:
-    * Any Redis or module command
     * Any [Redis event](https://redis.io/topics/notifications)
+    * Modules events are depends on the events the module expose.
 * _keyTypes_: a whitelist of key types that trigger execution when using the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more from the following:
     * Redis core types: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
     * Redis module types: 'module'
+* _commands_: a whitelist of commands to fire the events on, in such case the client that executed the command is linked to the trigged executions and it is possible to use [`override_reply`](runtime.md#override_reply) to change the reply to the client. For further reading please refer to [key miss event](miss_event.md) taturial.
 * _readValue_: when `#!python False` the value will not be read, so the **'type'** and **'value'** of the record will be set to `#!python None`
 
 _Return_
@@ -221,7 +223,7 @@ _Arguments_
 * _batch_: the number of new messages that trigger execution
 * _duration_: the time to wait before execution is triggered, regardless of the batch size (0 for no duration)
 * _onFailedPolicy_: the policy for handling execution failures, values should be as describe above
-* _onFailedRetryInterval_: the interval (in milliseconds) in which to retry in case _onFailedPolicy_ is **'retry'**
+* _onFailedRetryInterval_: the interval (in seconds) in which to retry in case _onFailedPolicy_ is **'retry'**
 * _trimStream_: when `#!python True` the stream will be trimmed after execution
 
 _Return_
@@ -342,13 +344,18 @@ The reader returns a list record with elements being the trigger's name followed
 **_Event Mode_**
 
 ```python
-class GearsBuilder('CommandReader').register(trigger=None, inorder=True/False)
+class GearsBuilder('CommandReader').register(trigger=None, inorder=True/False hook=None, keyprefix=None)
 ```
 
 _Arguments_
 
 * _trigger_: the trigger's name
 * _inorder_: if `True`, the commands will run one after the other in the order they came (this option is only relevant for [`async_local`](functions.md#register) executions, on [`sync`](functions.md#register) executions you get it by default from the sync property, and its currently not possible to promise this property on [`async`](functions.md#register) executions ). Supported only on v1.0.7 and above.
+* _hook_: A Redis command to hook. (for further reading about command hook, please refer to [Commands Hook](commands_hook.md))
+* _keyprefix_: When hooking a command, specify the key prefix on which the hook will be triggered. (for further reading about command hook, please refer to [Commands Hook](commands_hook.md))
+
+!!! important "Notice"
+    It is not possible to mix `trigger` parameter with `hook` parameter, an attempt to do so will result in an error.
 
 **Examples**
 

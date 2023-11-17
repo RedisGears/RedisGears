@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import sys
 import os
@@ -31,6 +31,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("lsb-release")
         self.install("zip unzip gawk")
         self.install("python-dev")
+        self.install("locales-all")
 
         # pip cannot build gevent on ARM
         if self.platform.is_arm() and self.dist == 'ubuntu' and self.os_version[0] < 20:
@@ -80,11 +81,12 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("gevent")
 
     def common_last(self):
+        self.run("{PYTHON} {READIES}/bin/getrmpytools --reinstall --modern".format(PYTHON=self.python, READIES=READIES))
         if self.with_python:
             self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
                      format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
                      nop=False, output=True)
-        self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
+        self.run("{PYTHON} -m pip install -r requirements.txt".format(PYTHON=self.python))
 
 #----------------------------------------------------------------------------------------------
 

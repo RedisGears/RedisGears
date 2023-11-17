@@ -1,4 +1,6 @@
 
+GCC=1
+
 WITH_PYTHON ?= 1
 
 ifeq ($(VG),1)
@@ -16,9 +18,7 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 
 #----------------------------------------------------------------------------------------------
 
-define HELP
-make setup      # install packages required for build
-make fetch      # download and prepare dependant modules (i.e., python, libevent)
+define HELPTEXT
 
 make build
   DEBUG=1         # build debug variant
@@ -59,7 +59,7 @@ MK_ALL_TARGETS=bindirs deps build ramp-pack verify-packs
 include $(MK)/defs
 
 GEARS_VERSION:=$(shell $(ROOT)/getver)
-OS_VERSION_DESC:=$(shell python2 $(ROOT)/getos.py)
+OS_VERSION_DESC:=$(shell python3 $(ROOT)/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -90,7 +90,6 @@ include build/hiredis/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
 
-CC=gcc
 SRCDIR=src
 
 define _SOURCES:=
@@ -133,8 +132,6 @@ define _CC_FLAGS
 	-std=gnu99
 	-MMD
 	-MF $(@:.o=.d)
-
-	
 	-I$(SRCDIR)
 	-I$(BINDIR)
 	-Ideps
@@ -161,10 +158,16 @@ ifeq ($(DEBUG),1)
 CC_FLAGS += -g -O0
 LD_FLAGS += -g
 else
-CC_FLAGS += -O2 -Wno-unused-result
+CC_FLAGS += -O3 -Wno-unused-result
+endif
+
+ifeq ($(GCOV),1)
+CC_FLAGS += -fprofile-arcs -ftest-coverage
+LD_FLAGS += -fprofile-arcs -ftest-coverage
 endif
 
 ifeq ($(OS),macos)
+CC_FLAGS += -I/usr/local/opt/openssl/include/
 LD_FLAGS += \
 	-framework CoreFoundation \
 	-undefined dynamic_lookup
@@ -205,7 +208,7 @@ endif
 
 MK_CUSTOM_CLEAN=1
 
-.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup fetch verify-packs platform
+.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup verify-packs platform jvmplugin
 
 include $(MK)/rules
 
@@ -253,7 +256,8 @@ EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
 EMBEDDED_LIBS_FLAGS=\
 	-Wl,-Bstatic $(HIREDIS) $(LIBEVENT) -Wl,-Bdynamic \
-	-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+	-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive \
+	-lssl -lcrypt
 endif
 
 define extract_symbols
@@ -285,12 +289,8 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON) $(HIREDIS)
 
 setup:
 	@echo Setting up system...
-	$(SHOW)./deps/readies/bin/getpy2
-	$(SHOW)python2 ./system-setup.py
-
-fetch get_deps:
-#	-$(SHOW)git submodule update --init --recursive
-	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
+	$(SHOW)./deps/readies/bin/getpy3
+	$(SHOW)python3 ./system-setup.py
 
 #----------------------------------------------------------------------------------------------
 
@@ -348,16 +348,20 @@ $(info *** MISSING_DEPS=$(MISSING_DEPS))
 endif
 
 clean: clean-gears-python
-ifeq ($(ALL),1)
 	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(TARGET.snapshot) $(notdir $(TARGET)) $(BINROOT)/redislabs
-else
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET.snapshot) $(TARGET:.so=.a) $(notdir $(TARGET)) \
 		artifacts/release/$(GEARS_PYTHON_TAR.release)* artifacts/snapshot/$(DGEARS_PYTHON_TAR.snapshot)*
-endif
 ifeq ($(DEPS),1)
-	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean;)
+	${MAKE} -C build/hiredis clean
+	${MAKE} -C build/libevent clean
+	${MAKE} -C plugins/python clean
+	${MAKE} -C plugins/jvmplugin/src clean
 endif
+
+jvmplugin:
+	@echo Building jvmplugin...
+	${MAKE} -C plugins/jvmplugin PYTHONDIR=$(BINROOT)/python3_$(GEARS_VERSION)
 
 clean-gears-python:
 	$(SHOW)make clean -C plugins/python
@@ -368,9 +372,10 @@ ifeq ($(WITH_PYTHON),1)
 RAMP_OPT += GEARSPY_PATH=$(abspath $(GEARS_PYTHON))
 endif
 
-artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml
+artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml jvmplugin
 	@echo Packing module...
 	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) $(RAMP_OPT) ./pack.sh $(TARGET)
+	python3 append_deps.py
 
 artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot): $(CPYTHON_PREFIX) $(GEARS_PYTHON)
 	@echo Packing Python plugin...
@@ -378,8 +383,10 @@ artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_
 
 ramp ramp-pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
 
+# keeping jvmplugin in case it's called explicitly. worst case it regenerates
 pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
-		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot)
+		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot) \
+		jvmplugin
 
 verify-packs:
 	@set -e ;\
@@ -415,21 +422,30 @@ ifeq ($(VALGRIND),1)
 TEST_FLAGS += VALGRIND=1
 endif
 
+ifeq ($(OS),macos)
+PARALLELISM?=1
+else
+PARALLELISM?=4
+endif
+
 test: __sep
 ifneq ($(TEST),)
 	@set -e; \
 	cd pytest; \
-	BB=1 $(TEST_FLAGS) python2 -m RLTest --test $(TEST) $(TEST_ARGS) \
+	BB=1 $(TEST_FLAGS) python3 -m RLTest --test $(TEST) $(TEST_ARGS) \
 		$(RLTEST_GDB) -s -v --module $(abspath $(TARGET)) \
 		--module-args "Plugin $(abspath $(GEARS_PYTHON))"
 else
 	$(SHOW)set -e; \
 	cd pytest; \
-	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh
+	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism $(PARALLELISM)
+	${MAKE} -C plugins/jvmplugin tests PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 endif
 
 #----------------------------------------------------------------------------------------------
 
 platform:
-	$(SHOW)make -C build/docker build $(shell ./build/docker/version-params) OSNICK=$(OSNICK) \
-		TEST=$(TEST) ARTIFACTS=$(ARTIFACTS)
+	$(SHOW)make -C build/docker build
+
+coverage_report:
+	gcovr -r . --html --html-details -o result.html -e "src/utils/*" -e "src/*.h" -e "deps/*" -e "plugins/python/redisai.h"

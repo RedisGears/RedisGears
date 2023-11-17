@@ -36,11 +36,15 @@ nav:
     - 'Readers': 'readers.md'
     - 'Operations': 'operations.md'
     - 'Commands': 'commands.md'
+    - 'RedisAI': 'redisai.md'
     - 'Configuration': 'configuration.md'
   - 'Examples': 'examples.md'
   - 'Clients': 'clients.md'
-  - 'Design':
-    - 'Isolation Technics': 'isolation.md'
+  - 'Advanced Topics':
+    - 'Isolation Techniques': 'isolation.md'
+    - 'Async Await Advanced Topics': 'async_await_advance_topics.md'
+    - 'Commands Hook': 'commands_hook.md'
+    - 'Key Miss Event': 'miss_event.md'
   - 'Glossary': 'glossary.md'
   - 'Contributing': 'contrib.md'
 

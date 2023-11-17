@@ -90,7 +90,7 @@ The **Execution Status** describes the function's current execution status. The 
 * **done**: the execution is done
 * **aborted**: the execution has been aborted
 * **pending_cluster**: the initiator is waiting for all workers to finish
-* **pending_run**: worker is pending ok from initiator to execute
+* **pending_run**: worker is pending OK from initiator to execute
 * **pending_receive**: the initiator is pending acknowledgement from workers on receiving execution
 * **pending_termination**: worker is pending a termination messaging from the initiator
 
@@ -181,7 +181,7 @@ Trying to run more than one function in the same execution will fail with an err
 
 **Python API**
 ```python
-class GearsBuilder.run(arg=None, convertToStr=True, collect=True)
+class GearsBuilder.run(arg=None, convertToStr=True, collect=True, mode='async')
 ```
 
 _Arguments_
@@ -192,6 +192,9 @@ _Arguments_
     * A Python generator for the [PythonReader](readers.md#pythonreader) reader
 * _convertToStr_: when `True` adds a [map](operations.md#map) operation to the flow's end that converts records to strings
 * _collect_: when `True` adds a [collect](operations.md#collect) operation to flow's end
+* _mode_: the execution mode of the function. Can be one of (notice that unlike register, `sync` is not supported on `run`):
+    * **'async'**: execution will be asynchronous across the entire cluster
+    * **'async_local'**: execution will be asynchronous and restricted to the handling shard
 
 **Examples**
 ```python

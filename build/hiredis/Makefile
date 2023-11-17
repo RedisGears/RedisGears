@@ -1,8 +1,10 @@
 
+GCC=1
+
 ROOT=../..
 include $(ROOT)/deps/readies/mk/main
 
-define HELP
+define HELPTEXT
 make build    # configure and compile
 make clean    # clean generated sbinaries
   ALL=1       # remote entire binary directory
@@ -23,9 +25,7 @@ MK_CUSTOM_CLEAN=1
 
 include $(MK)/defs
 
-CC=gcc
-
-_SOURCES=net.c hiredis.c sds.c async.c read.c alloc.c
+_SOURCES=net.c hiredis.c sds.c async.c read.c alloc.c  dict.c sockcompat.c ssl.c
 
 SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
 OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
@@ -48,6 +48,7 @@ CC_FLAGS += -O2 -Wno-unused-result
 endif
 
 ifeq ($(OS),macos)
+CC_FLAGS += -I/usr/local/opt/openssl/include/
 LD_FLAGS += -undefined dynamic_lookup
 endif
 

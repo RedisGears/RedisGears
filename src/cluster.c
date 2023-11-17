@@ -6,6 +6,8 @@
 #include "utils/dict.h"
 #include "utils/adlist.h"
 
+#include <hiredis.h>
+#include <hiredis_ssl.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <event2/event.h>
@@ -13,6 +15,9 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <libevent.h>
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #define CLUSTER_SET_MY_ID_INDEX 6
 
@@ -40,6 +45,7 @@ typedef struct Node{
     bool isMe;
     NodeStatus status;
     struct event *reconnectEvent;
+    struct event *asyncDisconnectEvent;
     struct event *resendHelloMessage;
     bool sendClusterTopologyOnNextConnect;
 }Node;
@@ -95,6 +101,77 @@ typedef struct Msg{
     MsgType type;
 }Msg;
 
+char* getConfigValue(const char* confName){
+    RedisModuleCallReply *rep = RedisModule_Call(staticCtx, "config", "cc", "get",
+            confName);
+    RedisModule_Assert(
+            RedisModule_CallReplyType(rep) == REDISMODULE_REPLY_ARRAY);
+    if (RedisModule_CallReplyLength(rep) == 0) {
+        RedisModule_FreeCallReply(rep);
+        return NULL;
+    }
+    RedisModule_Assert(RedisModule_CallReplyLength(rep) == 2);
+    RedisModuleCallReply *valueRep = RedisModule_CallReplyArrayElement(rep, 1);
+    RedisModule_Assert(
+            RedisModule_CallReplyType(valueRep) == REDISMODULE_REPLY_STRING);
+    size_t len;
+    const char* valueRepCStr = RedisModule_CallReplyStringPtr(valueRep, &len);
+
+    char* res = RG_CALLOC(1, len + 1);
+    memcpy(res, valueRepCStr, len);
+
+    RedisModule_FreeCallReply(rep);
+
+    return res;
+}
+
+static int checkTLS(char** client_key, char** client_cert, char** ca_cert, char** key_pass){
+    int ret = 1;
+    LockHandler_Acquire(staticCtx);
+    char* clusterTls = NULL;
+    char* tlsPort = NULL;
+
+    clusterTls = getConfigValue("tls-cluster");
+    if (!clusterTls || strcmp(clusterTls, "yes")) {
+        tlsPort = getConfigValue("tls-port");
+        if (!tlsPort || !strcmp(tlsPort, "0")) {
+            ret = 0;
+            goto done;
+        }
+    }
+
+    *client_key = getConfigValue("tls-key-file");
+    *client_cert = getConfigValue("tls-cert-file");
+    *ca_cert = getConfigValue("tls-ca-cert-file");
+    *key_pass = getConfigValue("tls-key-file-pass");
+
+    if (!*client_key || !*client_cert || !*ca_cert) {
+        ret = 0;
+        if (*client_key) {
+            RG_FREE(*client_key);
+        }
+        if (*client_cert) {
+            RG_FREE(*client_cert);
+        }
+        if (*ca_cert) {
+            RG_FREE(*client_cert);
+        }
+        if (*key_pass) {
+            RG_FREE(*key_pass);
+        }
+    }
+
+done:
+    if (clusterTls) {
+        RG_FREE(clusterTls);
+    }
+    if (tlsPort) {
+        RG_FREE(tlsPort);
+    }
+    LockHandler_Release(staticCtx);
+    return ret;
+}
+
 static Node* GetNode(const char* id){
     Gears_dictEntry *entry = Gears_dictFind(CurrCluster->nodes, id);
     Node* n = NULL;
@@ -106,6 +183,7 @@ static Node* GetNode(const char* id){
 
 static void FreeNodeInternals(Node* n){
     event_free(n->reconnectEvent);
+    event_free(n->asyncDisconnectEvent);
     event_free(n->resendHelloMessage);
     RG_FREE(n->id);
     RG_FREE(n->ip);
@@ -192,6 +270,13 @@ static void Cluster_Reconnect(evutil_socket_t s, short what, void *arg){
     Cluster_ConnectToShard(n);
 }
 
+static void Cluster_AsyncDisconnect(evutil_socket_t s, short what, void *arg){
+    Node* n = arg;
+    redisAsyncContext *c = n->c;
+    n->c = NULL;
+    redisAsyncDisconnect(n->c);
+}
+
 static Node* CreateNode(const char* id, const char* ip, unsigned short port, const char* password, const char* unixSocket, size_t minSlot, size_t maxSlot){
     RedisModule_Assert(!GetNode(id));
     Node* n = RG_ALLOC(sizeof(*n));
@@ -212,6 +297,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .runId = NULL,
     };
     n->reconnectEvent = event_new(main_base, -1, 0, Cluster_Reconnect, n);
+    n->asyncDisconnectEvent = event_new(main_base, -1, 0, Cluster_AsyncDisconnect, n);
     n->resendHelloMessage = event_new(main_base, -1, 0, Cluster_ResendHelloMessage, n);
     Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
@@ -352,6 +438,70 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
     event_add(n->reconnectEvent, &tv);
 }
 
+/* Callback for passing a keyfile password stored as an sds to OpenSSL */
+static int RG_TlsPasswordCallback(char *buf, int size, int rwflag, void *u) {
+    const char *pass = u;
+    size_t pass_len;
+
+    if (!pass) return -1;
+    pass_len = strlen(pass);
+    if (pass_len > (size_t) size) return -1;
+    memcpy(buf, pass, pass_len);
+
+    return (int) pass_len;
+}
+
+SSL_CTX* RG_CreateSSLContext(const char *cacert_filename,
+                             const char *cert_filename,
+                             const char *private_key_filename,
+                             const char *private_key_pass,
+                             redisSSLContextError *error)
+{
+    SSL_CTX *ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+    if (!ssl_ctx) {
+        if (error) *error = REDIS_SSL_CTX_CREATE_FAILED;
+        goto error;
+    }
+
+    SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+    SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
+
+    /* always set the callback, otherwise if key is encrypted and password
+     * was not given, we will be waiting on stdin. */
+    SSL_CTX_set_default_passwd_cb(ssl_ctx, RG_TlsPasswordCallback);
+    SSL_CTX_set_default_passwd_cb_userdata(ssl_ctx, (void *) private_key_pass);
+
+    if ((cert_filename != NULL && private_key_filename == NULL) ||
+            (private_key_filename != NULL && cert_filename == NULL)) {
+        if (error) *error = REDIS_SSL_CTX_CERT_KEY_REQUIRED;
+        goto error;
+    }
+
+    if (cacert_filename) {
+        if (!SSL_CTX_load_verify_locations(ssl_ctx, cacert_filename, NULL)) {
+            if (error) *error = REDIS_SSL_CTX_CA_CERT_LOAD_FAILED;
+            goto error;
+        }
+    }
+
+    if (cert_filename) {
+        if (!SSL_CTX_use_certificate_chain_file(ssl_ctx, cert_filename)) {
+            if (error) *error = REDIS_SSL_CTX_CLIENT_CERT_LOAD_FAILED;
+            goto error;
+        }
+        if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, private_key_filename, SSL_FILETYPE_PEM)) {
+            if (error) *error = REDIS_SSL_CTX_PRIVATE_KEY_LOAD_FAILED;
+            goto error;
+        }
+    }
+
+    return ssl_ctx;
+
+error:
+    if (ssl_ctx) SSL_CTX_free(ssl_ctx);
+    return NULL;
+}
+
 static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status){
     if(!c->data){
         return;
@@ -365,6 +515,30 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
         };
         event_add(n->reconnectEvent, &tv);
     }else{
+        char* client_cert = NULL;
+        char* client_key = NULL;
+        char* ca_cert = NULL;
+        char* key_file_pass = NULL;
+        if(checkTLS(&client_key, &client_cert, &ca_cert, &key_file_pass)){
+            redisSSLContextError ssl_error = 0;
+            SSL_CTX *ssl_context = RG_CreateSSLContext(ca_cert, client_cert, client_key, key_file_pass, &ssl_error);
+            RG_FREE(client_key);
+            RG_FREE(client_cert);
+            RG_FREE(ca_cert);
+            if (key_file_pass) {
+                RG_FREE(key_file_pass);
+            }
+            if(ssl_context == NULL || ssl_error != 0) {
+                event_add(n->asyncDisconnectEvent, 0);
+                return;
+            }
+            SSL *ssl = SSL_new(ssl_context);
+            if (redisInitiateSSL((redisContext *)(&c->c), ssl) != REDIS_OK) {
+                event_add(n->asyncDisconnectEvent, 0);
+                return;
+            }
+        }
+
         RedisModule_Log(staticCtx, "notice", "connected : %s:%d, status = %d\r\n", c->c.tcp.host, c->c.tcp.port, status);
         if(n->password){
             redisAsyncCommand((redisAsyncContext*)c, NULL, NULL, "AUTH %s", n->password);
@@ -470,8 +644,27 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
 
         addr = passEnd + 1;
 
-        char* ipEnd = strstr(addr, ":");
+        if (addr[0] == '[') {
+            addr += 1; /* skip ipv6 opener `[` */
+        }
+
+        /* Find last `:` */
+        char* iter = strstr(addr, ":");
+        char* ipEnd = NULL;
+        while (iter) {
+            ipEnd = iter;
+            iter++;
+            iter = strstr(iter, ":");
+        }
+
+        RedisModule_Assert(ipEnd);
+
         size_t ipSize = ipEnd - addr;
+
+        if (addr[ipSize - 1] == ']') {
+            --ipSize; /* Skip ipv6 closer `]` */
+        }
+
         char ip[ipSize + 1];
         memcpy(ip, addr, ipSize);
         ip[ipSize] = '\0';
@@ -542,7 +735,7 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
 
         RedisModuleCallReply *nodeDetailsRelpy = RedisModule_CallReplyArrayElement(slotRangeRelpy, 2);
         RedisModule_Assert(RedisModule_CallReplyType(nodeDetailsRelpy) == REDISMODULE_REPLY_ARRAY);
-        RedisModule_Assert(RedisModule_CallReplyLength(nodeDetailsRelpy) == 3);
+        RedisModule_Assert(RedisModule_CallReplyLength(nodeDetailsRelpy) >= 3);
         RedisModuleCallReply *nodeipReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 0);
         RedisModuleCallReply *nodeportReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 1);
         RedisModuleCallReply *nodeidReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 2);
@@ -738,17 +931,27 @@ void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len){
 }
 
 bool Cluster_IsInitialized(){
-    if(!IsEnterprise()){
-        // on open source, the user need to send cluster refresh.
-        // if no cluster refresh was sent we assume single shard database.
+    if (CurrCluster){
         return true;
     }
-    // on enterprise we will always get the cluster set command so until we get it
-    // we assume cluster is not initialized.
-    // when cluster is not initialized we will not allow almost all operations.
-    // the only operations we will allows are sync registrations that can not be
-    // postpond.
-    return CurrCluster? true : false;
+    if(IsEnterprise()){
+        // on enterprise we will always get the cluster set command so until we get it
+        // we assume cluster is not initialized.
+        // when cluster is not initialized we will not allow almost all operations.
+        // the only operations we will allows are local registrations that can not be
+        // postpond.
+        return false;
+    }
+    // On oss we need to check if Redis in configured to be cluster,
+    // if so, we will wait for RG.CLUSTERREFRESH command, otherwise we will
+    // assume we are on a single shard.
+    bool res = true;
+    LockHandler_Acquire(staticCtx);
+    if(RedisModule_GetContextFlags(staticCtx) & REDISMODULE_CTX_FLAGS_CLUSTER){
+		res = true;
+	}
+    LockHandler_Release(staticCtx);
+    return res;
 }
 
 bool Cluster_IsClusterMode(){
@@ -759,20 +962,29 @@ size_t Cluster_GetSize(){
     return Gears_dictSize(CurrCluster->nodes);
 }
 
+char myDefaultId[REDISMODULE_NODE_ID_LEN + 1];
+
 void Cluster_Init(){
+    memset(myDefaultId, '0', REDISMODULE_NODE_ID_LEN);
+    myDefaultId[REDISMODULE_NODE_ID_LEN] = '\0';
     RemoteCallbacks = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     nodesMsgIds = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     Cluster_StartClusterThread();
 }
 
+
 char* Cluster_GetMyId(){
-    return CurrCluster->myId;
+    return (CurrCluster && CurrCluster->myId) ? CurrCluster->myId : myDefaultId;
 }
 
 const char* Cluster_GetMyHashTag(){
     if(RedisModule_ShardingGetSlotRange){
         int first, last;
         RedisModule_ShardingGetSlotRange(&first, &last);
+        if (first < 0) {
+            /* first < 0 means we are on a single shard database, set first=0 */
+            first = 0;
+        }
         return slot_table[first];
     }
 

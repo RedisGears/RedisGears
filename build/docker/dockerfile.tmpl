@@ -1,0 +1,68 @@
+
+#----------------------------------------------------------------------------------------------
+FROM redisfab/redis:{{REDIS_VERSION}}-{{ARCH}}-{{OSNICK}} AS redis
+FROM {{OS}} AS builder
+
+RUN if [ -f /root/.profile ]; then sed -ie 's/mesg n/tty -s \&\& mesg -n/g' /root/.profile; fi
+SHELL ["/bin/bash", "-l", "-c"]
+
+RUN echo "Building for {{OSNICK}} ({{OS}}) for {{ARCH}} [with Redis {{REDIS_VERSION}}]"
+
+WORKDIR /build
+COPY --from=redis /usr/local/ /usr/local/
+
+ADD . /build
+
+RUN ./deps/readies/bin/getupdates
+RUN VERBOSE=1 ./sbin/setup
+RUN ./plugins/jvmplugin/system-setup.py
+RUN make all SHOW=1
+RUN ./getver > artifacts/VERSION
+
+{% if PACK == "1" %}
+RUN mkdir -p artifacts
+RUN make pack
+RUN set -e ;\
+    echo "Artifacts:" ;\
+    du -ah --apparent-size /build/artifacts
+{% endif %}
+
+{% if TEST == "1" %}
+RUN TEST= make test PARALLELISM=1
+RUN set -e ;\
+	cd /build/pytest/logs ;\
+    rm -f *.aof *.rdb ;\
+	tar -czf /build/artifacts/pytest-logs-{{ARCH}}-{{OSNICK}}.tgz .
+{% endif %}
+
+#----------------------------------------------------------------------------------------------
+FROM redisfab/redis:{{REDIS_VERSION}}-{{ARCH}}-{{OSNICK}}
+
+ENV REDIS_MODULES /var/opt/redislabs/lib/modules
+
+RUN mkdir -p $REDIS_MODULES/ /var/opt/redislabs/artifacts
+RUN chown -R redis:redis /var/opt/redislabs
+
+COPY --from=builder --chown=redis:redis /build/redisgears.so $REDIS_MODULES/
+COPY --from=builder --chown=redis:redis /build/bin/linux-{{ARCH}}-release/python3_* /var/opt/redislabs/modules/rg/python3/
+COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/bin/OpenJDK /var/opt/redislabs/modules/rg/OpenJDK/
+COPY --from=builder --chown=redis:redis /build/bin/linux-{{ARCH}}-release/gears_python/gears_python.so /var/opt/redislabs/modules/rg/plugin/
+COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/src/gears_jvm.so /var/opt/redislabs/modules/rg/plugin/
+COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/gears_runtime/target/gear_runtime-jar-with-dependencies.jar /var/opt/redislabs/modules/rg/
+
+# This is needed in order to allow extraction of artifacts from platform-specific build
+# There is no use in removing this directory if $PACK !=1, because image side will only
+#   increase if `docker build --squash` if not used.
+# COPY --from=builder /build/artifacts/VERSION /var/opt/redislabs/artifacts/VERSION
+# COPY --from=builder /build/artifacts/snapshot/ /var/opt/redislabs/artifacts/snapshot
+COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts
+
+RUN	set -e ;\
+	cd /var/opt/redislabs/modules/rg/ ;\
+	ln -s python3 python3_`cat /var/opt/redislabs/artifacts/VERSION`
+
+RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
+RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
+RUN rm -rf /var/cache/apt /var/cache/yum
+
+CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_jvm.so", "JvmOptions", "-Djava.class.path=/var/opt/redislabs/modules/rg/gear_runtime-jar-with-dependencies.jar", "JvmPath", "/var/opt/redislabs/modules/rg/OpenJDK/jdk-17.0.7+7/"]
