@@ -73,6 +73,9 @@ commands:
 
     steps:
       - checkout-all
+      - restore_cache:
+          keys:
+            - deps-<<parameters.arch_suffix>>-{{ checksum "Cargo.toml" }}-{{checksum "redisgears_macros_internals/Cargo.toml"}}-{{checksum "redisgears_core/Cargo.toml"}}-{{checksum "redisgears_v8_plugin/Cargo.toml"}}-{{checksum "redisgears_plugin_api/Cargo.toml"}}
       - run:
           name: install dependencies
           shell: /bin/bash -l -eo pipefail
@@ -118,6 +121,12 @@ commands:
           command: |
             ulimit -n 1024
             ./run_tests.sh
+      - save_cache:
+          key: deps-<<parameters.arch_suffix>>-{{ checksum "Cargo.toml" }}-{{checksum "redisgears_macros_internals/Cargo.toml"}}-{{checksum "redisgears_core/Cargo.toml"}}-{{checksum "redisgears_v8_plugin/Cargo.toml"}}-{{checksum "redisgears_plugin_api/Cargo.toml"}}
+          paths:
+            - "~/.cargo"
+            - "~/.cache/pip"
+            - "./target"
       - run:
           shell: /bin/bash -l -eo pipefail
           command: |
