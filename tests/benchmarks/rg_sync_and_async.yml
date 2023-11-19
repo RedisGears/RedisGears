@@ -4,9 +4,7 @@ description: "RedisGears function can go to the background by implement the func
               The Coroutine is invoked on a background thread and do not block the Redis processes.
               This example shown bellow starts Sync and Moves Async.
 "
-remote:
- - type: oss-1nodes
- - setup: c5.4xlarge
+
 dbconfig:
   - init_commands:
     - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerAsyncFunction('test', function(client, expected_name){    client.call('type', expected_name);    return client.executeAsync(async function(async_client) {        async_client.block((client)=>{            client.call('type', expected_name);        });    });});"]

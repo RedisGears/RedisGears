@@ -6,9 +6,7 @@ description: " The following example shows how to register a database trigger
                You should compare against sync notifications processing ( test name rg_keyspace_sync_simple )
                and no processing ( test name rg_keyspace_baseline ).
              "
-remote:
- - type: oss-1nodes
- - setup: c5.4xlarge
+
 dbconfig:
   - init_commands:
     - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerKeySpaceTrigger('consumer', '', async function(client, data){ return; });"]

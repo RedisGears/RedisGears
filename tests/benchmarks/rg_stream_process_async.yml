@@ -3,9 +3,7 @@ name: "rg_stream_process_async"
 description: "RedisGears 2.0 comes with a full stream API to processes data from Redis Stream.
               This example registers a stream consumer that logs the received message in an async manner.
              "
-remote:
- - type: oss-1nodes
- - setup: c5.4xlarge
+
 dbconfig:
   - init_commands:
     - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerStreamTrigger(     'consumer',     'stream',      async  function(c, data) {         redis.log(JSON.stringify(data, (key, value) =>             typeof value === 'bigint'                 ? value.toString()                 : value          ));     } );"]
