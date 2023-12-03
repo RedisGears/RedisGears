@@ -40,6 +40,9 @@ pub(crate) struct NotificationConsumer {
     callback: Option<NotificationCallback>,
     stats: Arc<RefCellWrapper<NotificationConsumerStats>>,
     description: Option<String>,
+    /// If set, the event notification flags which should be checked
+    /// prior to invoking the [`Self::callback`].
+    event_notification_flags: Option<redis_module::NotifyEvent>,
 }
 
 impl std::fmt::Debug for NotificationConsumer {
@@ -55,6 +58,7 @@ impl std::fmt::Debug for NotificationConsumer {
             .field("callback", &callback)
             .field("stats", &self.stats)
             .field("description", &self.description)
+            .field("event_notification_flags", &self.event_notification_flags)
             .finish()
     }
 }
@@ -64,6 +68,7 @@ impl NotificationConsumer {
         key: ConsumerKey,
         callback: NotificationCallback,
         description: Option<String>,
+        event_notification_flags: Option<redis_module::NotifyEvent>,
     ) -> NotificationConsumer {
         NotificationConsumer {
             key: Some(key),
@@ -80,6 +85,7 @@ impl NotificationConsumer {
                 }),
             }),
             description,
+            event_notification_flags: event_notification_flags,
         }
     }
 
@@ -163,11 +169,13 @@ impl KeysNotificationsCtx {
         prefix: &[u8],
         callback: NotificationCallback,
         description: Option<String>,
+        event_notification_flags: Option<redis_module::NotifyEvent>,
     ) -> Arc<RefCell<NotificationConsumer>> {
         let consumer = Arc::new(RefCell::new(NotificationConsumer::new(
             ConsumerKey::Prefix(prefix.to_vec()),
             callback,
             description,
+            event_notification_flags,
         )));
         self.consumers.push(Arc::downgrade(&consumer));
         consumer
@@ -178,24 +186,43 @@ impl KeysNotificationsCtx {
         key: &[u8],
         callback: NotificationCallback,
         description: Option<String>,
+        event_notification_flags: Option<redis_module::NotifyEvent>,
     ) -> Arc<RefCell<NotificationConsumer>> {
         let consumer = Arc::new(RefCell::new(NotificationConsumer::new(
             ConsumerKey::Key(key.to_vec()),
             callback,
             description,
+            event_notification_flags,
         )));
         self.consumers.push(Arc::downgrade(&consumer));
         consumer
     }
 
-    pub(crate) fn on_key_touched(&self, ctx: &Context, event: &str, key: &[u8]) {
+    pub(crate) fn on_key_touched(
+        &self,
+        ctx: &Context,
+        event_notification_type: redis_module::NotifyEvent,
+        event: &str,
+        key: &[u8],
+    ) {
         for consumer in self.consumers.iter() {
             let consumer = match consumer.upgrade() {
                 Some(c) => c,
                 None => continue,
             };
+
             let res = {
                 let c = consumer.borrow_mut();
+
+                // A fix for 1.2
+                if let Some(flags) = c.event_notification_flags {
+                    if !flags.contains(event_notification_type) {
+                        continue;
+                    }
+                } else if event_notification_type.contains(redis_module::NotifyEvent::NEW) {
+                    continue;
+                }
+
                 match c.key.as_ref().unwrap() {
                     ConsumerKey::Key(k) => key == k,
                     ConsumerKey::Prefix(prefix) => key.starts_with(prefix),

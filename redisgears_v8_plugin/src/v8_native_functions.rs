@@ -820,9 +820,10 @@ impl std::fmt::Debug for ApiVersionSupported {
 
 impl ApiVersionSupported {
     /// A list of all currently supported and deprecated versions.
-    const SUPPORTED: [ApiVersionSupported; 2] = [
+    const SUPPORTED: [ApiVersionSupported; 3] = [
         Self::new(ApiVersion(1, 0), initialize_globals_1_0, false),
         Self::new(ApiVersion(1, 1), initialize_globals_1_1, false),
+        Self::new(ApiVersion(1, 2), initialize_globals_1_2, false),
     ];
 
     const fn new(
@@ -1027,6 +1028,38 @@ pub(crate) fn initialize_globals_1_1(
     Ok(())
 }
 
+/// Creates a global `redis` object with methods for the API of version "1.2".
+/// The `1.2` API is an extension to the `1.1` which provides a way to
+/// specify event notification flags for the key space notifications.
+pub(crate) fn initialize_globals_1_2(
+    api_version: ApiVersionSupported,
+    redis: &V8LocalObject,
+    script_ctx: &Arc<V8ScriptCtx>,
+    globals: &V8LocalObject,
+    isolate_scope: &V8IsolateScope,
+    ctx_scope: &V8ContextScope,
+    config: Option<&String>,
+) -> Result<(), GearsApiError> {
+    initialize_globals_1_1(
+        api_version,
+        redis,
+        script_ctx,
+        globals,
+        isolate_scope,
+        ctx_scope,
+        config,
+    )?;
+
+    // The change for 1.2 is in they `keySpaceTrigger` function. As the
+    // change follows the semantic versioning, it is also done for the
+    // version 1.1 and 1.0 automatically anyway, so this function
+    // serves almost no purpose but to show that there is a new API
+    // version. It is anyway going to be fully optimised out in favour
+    // of the `initialize_globals_1_1` as it does nothing.
+
+    Ok(())
+}
+
 #[derive(NativeFunctionArgument)]
 struct NativeFunctionOptionalArgs<'isolate_scope, 'isolate> {
     description: Option<String>,
@@ -1190,9 +1223,10 @@ fn add_stream_trigger_api(
 struct NoficationConsumerOptionalArgs<'isolate_scope, 'isolate> {
     onTriggerFired: Option<V8LocalValue<'isolate_scope, 'isolate>>,
     description: Option<String>,
+    eventNotificationFlags: Option<V8LocalArray<'isolate_scope, 'isolate>>,
 }
 
-fn add_register_notification_consumer_api(
+fn add_register_notification_consumer_api_1_2(
     redis: &V8LocalObject,
     script_ctx: &Arc<V8ScriptCtx>,
     ctx_scope: &V8ContextScope,
@@ -1220,7 +1254,24 @@ fn add_register_notification_consumer_api(
             })
         })?;
 
-        let description = optional_args.and_then(|v| v.description);
+        let description = optional_args.as_ref().and_then(|v| v.description.clone());
+        let event_notification_flags = optional_args
+            .as_ref()
+            .and_then(|v| {
+                v.eventNotificationFlags.as_ref().map(|flags| {
+                    flags.iter(curr_ctx_scope)
+                    .try_fold(redis_module::NotifyEvent::empty(), |mut acc, s| -> Result<redis_module::NotifyEvent, String> {
+                let event_notification_flag_name = s
+                    .to_utf8()
+                    .ok_or_else(|| "`event_notification_flags` option argument must be a valid array of strings.".to_string())
+                    ?;
+                let event_notification_flag_name_str = event_notification_flag_name.as_str();
+                acc |= redis_module::NotifyEvent::from_name(event_notification_flag_name_str )
+                    .ok_or_else(|| format!("The passed {event_notification_flag_name_str} is not a valid event notification flag."))?;
+                Ok(acc)
+            })
+            })
+        }).and_then(|v| v.ok());
 
         let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0).ok_or_else(|| format!("Called '{REGISTER_NOTIFICATIONS_CONSUMER}' out of context"))?;
 
@@ -1230,10 +1281,10 @@ fn add_register_notification_consumer_api(
 
         let res = if prefix.is_string() {
             let prefix = prefix.to_utf8().unwrap();
-            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx), description)
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx), description, event_notification_flags)
         } else if prefix.is_array_buffer() {
             let prefix = prefix.as_array_buffer();
-            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx, ), description)
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx, ), description, event_notification_flags)
         } else {
             return Err(format!("Second argument to '{REGISTER_NOTIFICATIONS_CONSUMER}' must be a string or ArrayBuffer representing the prefix"));
         };
@@ -1280,7 +1331,7 @@ pub(crate) fn initialize_globals_1_0(
 
     add_stream_trigger_api(redis, script_ctx, ctx_scope);
 
-    add_register_notification_consumer_api(redis, script_ctx, ctx_scope);
+    add_register_notification_consumer_api_1_2(redis, script_ctx, ctx_scope);
 
     // add 'register_function'
     add_register_function_api(redis, script_ctx, ctx_scope, false);

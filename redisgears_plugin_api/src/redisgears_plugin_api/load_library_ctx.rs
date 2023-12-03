@@ -121,5 +121,6 @@ pub trait LoadLibraryCtxInterface {
         key: RegisteredKeys,
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
         description: Option<String>,
+        event_notification_flags: Option<redis_module::NotifyEvent>,
     ) -> Result<(), GearsApiError>;
 }

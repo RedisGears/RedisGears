@@ -9,8 +9,10 @@ rust-version = "1.70"
 [dependencies]
 redis-module = { workspace = true }
 redis-module-macros = { workspace = true }
-lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "master", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
-lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "master" }
+# lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "master", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
+# lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "master" }
+lib_mr = { path = "../../LibMR", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
+lib_mr_derive = { path = "../../LibMR/LibMRDerive" }
 linkme = "0.3"
 redisai_rs = { path = "../redisai_rs" }
 libloading = "0.7"
