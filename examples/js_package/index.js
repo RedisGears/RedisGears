@@ -20,7 +20,21 @@ redis.registerAsyncFunction(
 );
 
 redis.registerKeySpaceTrigger(
-  'barnew', // trigger name
+  'bar', // trigger name
+  'keys*', //key prefix
+  function(client, data) {
+    console.log("Got this key data 1: " + data);
+  }, //callback
+  {
+    description: 'description',
+    onTriggerFired: function(client, data) {
+        console.log("Got this key data 2: " + data);
+    },
+  } //optional arguments
+)
+
+redis.registerKeySpaceTrigger(
+  'onlynewnotifications', // trigger name
   '', //key prefix
   function(client, data) {
     console.log("Got this key data created1: " + data);
@@ -33,6 +47,23 @@ redis.registerKeySpaceTrigger(
     eventNotificationFlags: [EventNotificationFlags.NEW]
   } //optional arguments
 )
+
+redis.registerKeySpaceTrigger(
+  'allnewnotifications', // trigger name
+  '', //key prefix
+  function(client, data) {
+    console.log("Got this key data 1: " + data);
+  }, //callback
+  {
+    description: 'description',
+    onTriggerFired: function(client, data) {
+        console.log("Got this key data 2: " + data);
+    },
+    eventNotificationFlags: [EventNotificationFlags.NEW, EventNotificationFlags.ALL]
+  } //optional arguments
+)
+
+
 
 redis.registerStreamTrigger(
   'foobar', //trigger name

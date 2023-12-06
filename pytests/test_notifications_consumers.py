@@ -327,7 +327,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     env.expect('TFUNCTION', 'LOAD', script).error().contains("'onTriggerFired' argument to 'registerKeySpaceTrigger' must be a function")
 
 @gearsTest()
-def testKeySpaceNotificationsWithFlags(env):
+def testKeySpaceNotificationsWithExistingFlags(env):
     """#!js api_version=1.2 name=lib
 var n_notifications = 0;
 redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
@@ -348,3 +348,20 @@ redis.registerFunction("n_notifications", function(){
     env.expectTfcall('lib', 'n_notifications').equal(1)
     env.expect('SET', 'X', '3').equal(True)
     env.expectTfcall('lib', 'n_notifications').equal(1)
+
+@gearsTest()
+def testKeySpaceNotificationsWithNotExistingFlags(env):
+    script = """#!js api_version=1.2 name=lib
+var n_notifications = 0;
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
+    n_notifications += 1;
+}, {eventNotificationFlags: ["A_NON_EXISTING_FLAG"]});
+
+redis.registerFunction("n_notifications", function(){
+    return n_notifications
+})
+    """
+
+    env.expect('TFUNCTION', 'LOAD', script).contains('The V8 remote debugging server is waiting for a connection')
+
+

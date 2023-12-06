@@ -325,7 +325,10 @@ export enum EventNotificationFlags {
      */
     KEYMISS = 'KEYMISS',
     /**
-     * All events (Excluding `KEYMISS`).
+     * All events (Excluding `KEYMISS` and `NEW`).
+     *
+     * Includes `GENERIC`, `STRING`, `LIST`, `SET`, `HASH`, `ZSET`,
+     * `EXPIRED`, `EVICTED`, `STREAM`, `MODULE`.
      */
     ALL = 'ALL',
     /**

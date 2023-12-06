@@ -1255,7 +1255,7 @@ fn add_register_notification_consumer_api_1_2(
         })?;
 
         let description = optional_args.as_ref().and_then(|v| v.description.clone());
-        let event_notification_flags = optional_args
+        let event_notification_flags = if let Some(flags) = optional_args
             .as_ref()
             .and_then(|v| {
                 v.eventNotificationFlags.as_ref().map(|flags| {
@@ -1266,12 +1266,16 @@ fn add_register_notification_consumer_api_1_2(
                     .ok_or_else(|| "`event_notification_flags` option argument must be a valid array of strings.".to_string())
                     ?;
                 let event_notification_flag_name_str = event_notification_flag_name.as_str();
-                acc |= redis_module::NotifyEvent::from_name(event_notification_flag_name_str )
+                acc |= redis_module::NotifyEvent::from_name(event_notification_flag_name_str)
                     .ok_or_else(|| format!("The passed {event_notification_flag_name_str} is not a valid event notification flag."))?;
                 Ok(acc)
             })
             })
-        }).and_then(|v| v.ok());
+            }) {
+                Some(flags?)
+            } else {
+                None
+            };
 
         let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0).ok_or_else(|| format!("Called '{REGISTER_NOTIFICATIONS_CONSUMER}' out of context"))?;
 
