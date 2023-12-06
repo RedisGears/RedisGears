@@ -1,0 +1,3 @@
+redis==5.1.0a1
+RLTest @ git+https://github.com/RedisLabsModules/RLTest.git@master
+websockets==11.0.3
