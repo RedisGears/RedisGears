@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 #
-# Requires Python 3.
+# Requires:
+#
+# - Python 3 interpreter.
+# - Python 3 pip.
+# - coreutils
 
 FULL_PATH_TO_SCRIPT="$(realpath "${BASH_SOURCE[-1]}")"
 SCRIPT_DIRECTORY="$(dirname "$FULL_PATH_TO_SCRIPT")"
