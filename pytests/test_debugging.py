@@ -338,7 +338,7 @@ def deploy_script(env: Env):
 @gearsTest(debugServerAddress="127.0.0.1:9005")
 def testDeployConnectStartDisconnect(env: Env):
     deploy_script(env)
-    client = DebuggerClient(env)
+    client = DebuggerClient(env, "ws://127.0.0.1:9005")
     client.disconnect()
 
     # Check that Redis still operates fine.
@@ -349,10 +349,10 @@ def testDeployConnectStartDisconnect(env: Env):
     env.assertEqual(len(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'v'))), 0)
 
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress="127.0.0.1:9006")
 def testSetBreakpointAndHitIt(env: Env):
     deploy_script(env)
-    client = DebuggerClient(env)
+    client = DebuggerClient(env, "ws://127.0.0.1:9006")
     breakpoint = client.set_breakpoint(2, 1)
     env.assertEqual(len(client.breakpoints), 1)
     # Now proceed from the very first instruction to the very first
@@ -368,10 +368,10 @@ def testSetBreakpointAndHitIt(env: Env):
     # Check that Redis still operates fine.
     env.expect('PING').equal(True)
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress="127.0.0.1:9007")
 def testSetBreakpointAndRemoveIt(env: Env):
     deploy_script(env)
-    client = DebuggerClient(env)
+    client = DebuggerClient(env, "ws://127.0.0.1:9007")
     breakpoint = client.set_breakpoint(2, 1)
     env.assertEqual(len(client.breakpoints), 1)
     breakpoint.remove()
@@ -426,12 +426,12 @@ def assert_load_for_debug_fails(env: Env, connection):
     except BaseException:
         env.assertTrue(False, message="Didn't fail when it should have.")
 
-@gearsTest(debugServerAddress="127.0.0.1:9005", cluster=True)
+@gearsTest(debugServerAddress="127.0.0.1:9007", cluster=True)
 def testNotPossibleWhenInClusterMode(env: Env, master_connection):
     for shard_connection in shardsConnections(env):
         assert_load_for_debug_fails(env, shard_connection)
 
-@gearsTest(debugServerAddress="127.0.0.1:9005", withReplicas=True)
+@gearsTest(debugServerAddress="127.0.0.1:9008", withReplicas=True)
 def testNotPossibleOnReplicas(env: Env):
     slave_connection = env.getSlaveConnection()
     assert_load_for_debug_fails(env, slave_connection)
@@ -440,10 +440,10 @@ def testNotPossibleOnReplicas(env: Env):
 The async functions are ran in the background, while the processing
 happens in cron. Let's see Redis can still work fine.
 """
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress="127.0.0.1:9009")
 def testDebuggingAsyncFunctionInBackground(env: Env):
     deploy_script(env)
-    client = DebuggerClient(env)
+    client = DebuggerClient(env, "ws://127.0.0.1:9009")
     breakpoint = client.set_breakpoint(14, 1)
     env.assertEqual(len(client.breakpoints), 1)
     # Calling an asynchronous function shouldn't block the client.
@@ -460,13 +460,13 @@ def testDebuggingAsyncFunctionInBackground(env: Env):
     future.equal("OK")
     client.disconnect()
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress="127.0.0.1:9010")
 def testKeySpaceTriggerPaused(env: Env):
     import threading
     import time
 
     deploy_script(env)
-    client = DebuggerClient(env)
+    client = DebuggerClient(env, "ws://127.0.0.1:9010")
     breakpoint = client.set_breakpoint(26, 1)
     env.assertEqual(len(client.breakpoints), 1)
 
@@ -489,13 +489,13 @@ def testKeySpaceTriggerPaused(env: Env):
     env.expect('SET', 'keys:*', 'value').equal(True)
     thread.join()
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress="127.0.0.1:9011")
 def testStreamTriggerPaused(env: Env):
     import threading
     import time
 
     deploy_script(env)
-    client = DebuggerClient(env)
+    client = DebuggerClient(env, "ws://127.0.0.1:9011")
     breakpoint = client.set_breakpoint(43, 1)
     env.assertEqual(len(client.breakpoints), 1)
 

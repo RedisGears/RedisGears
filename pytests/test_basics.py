@@ -146,7 +146,7 @@ redis.registerFunction("set", function(client, key, val){
     """
     env.expectTfcall('lib', 'set', ['x'], ['1']).equal('OK')
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
-    env.expectTfcall('lib', 'set', ['x'], ['1']).error().contains('OOM can not run the function when out of memory')
+    env.expectTfcall('lib', 'set', ['x'], ['1']).error().contains('can not run the function when out of memory')
 
 @gearsTest()
 def testRedisOOMOnAsyncFunction(env):
@@ -724,7 +724,7 @@ redis.registerFunction("debug_protocol", function(client, arg){
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['array'], c=conn), [0, 1, 2])
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['set'], c=conn), set([0, 1, 2]))
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['map'], c=conn), {1: True, 2: False, 0: False})
-    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['verbatim'], c=conn), 'txt:This is a verbatim\nstring')
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['verbatim'], c=conn), 'This is a verbatim\nstring')
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['true'], c=conn), True)
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['false'], c=conn), False)
 

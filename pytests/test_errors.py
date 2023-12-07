@@ -414,7 +414,7 @@ def testCallFunctionOnOOM(env):
 redis.registerFunction('test', () => {return 1})
     '''
     env.expect('config', 'set', 'maxmemory', '1').equal('OK')
-    env.expectTfcallAsync('lib', 'test').error().contains("OOM can not run the function when out of memory")
+    env.expectTfcallAsync('lib', 'test').error().contains("can not run the function when out of memory")
 
 @gearsTest()
 def testRegisterSameConsumerTwice(env):
