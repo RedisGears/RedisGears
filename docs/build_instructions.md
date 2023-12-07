@@ -130,7 +130,7 @@ Enter directory ./pytests
 cd ./pytests
 ```
 
-### Install the pre-requisites
+### Install the prerequisites
 
 It is required to have installed these components and having those available with
 the `$PATH` environment variable:
