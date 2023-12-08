@@ -1,4 +1,8 @@
 version: 0.1
+remote:
+ - type: oss-1nodes
+ - setup: c5.4xlarge
+ - spot_instance: oss-redisgears-c5-spot-instances
 exporter:
   redistimeseries:
     timemetric: "$.StartTime"
