@@ -117,7 +117,7 @@ commands:
           working_directory: pytests
           command: |
             ulimit -n 1024
-            ./run_tests.sh
+            ./run_tests.sh --no-progress
       - run:
           shell: /bin/bash -l -eo pipefail
           command: |
