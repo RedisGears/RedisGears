@@ -120,7 +120,7 @@ make
 sudo make install
 ```
 
-## Run_Test
+## Run Tests
 
 ### Change Directory
 
@@ -128,6 +128,20 @@ Enter directory ./pytests
 
 ```bash
 cd ./pytests
+```
+
+### Install the prerequisites
+
+It is required to have installed these components and having those available with
+the `$PATH` environment variable:
+
+- Python 3
+- Python 3 PIP
+
+### Install the dependencies
+
+```bash
+PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install -r requirements.txt -U
 ```
 
 ### Run Tests With RLTest

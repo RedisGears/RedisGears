@@ -141,7 +141,7 @@ class AsyncResponse:
         except Exception as e:
             self.env.assertContains(msg, str(e))
 
-def extendEnvWithGearsFunctionality(env):
+def extendEnvWithGearsFunctionality(env, debug_server_address):
     event_loop = asyncio.new_event_loop()
     thread = Thread(target = event_loop.run_forever)
     thread.daemon = True
@@ -186,6 +186,7 @@ def extendEnvWithGearsFunctionality(env):
     env.noBlockingTfcall = noBlockingTfcall
     env.noBlockingTfcallAsync = noBlockingTfcallAsync
     env.getResp3Connection = getResp3Connection
+    env.debugServerAddress = debug_server_address
 
 def gearsTest(skipTest=False,
               skipOnCluster=False,
@@ -296,7 +297,7 @@ def gearsTest(skipTest=False,
                             return status
 
                         runUntil(env, 1, synchronise_replicas, timeout=10)
-            extendEnvWithGearsFunctionality(env)
+            extendEnvWithGearsFunctionality(env, debugServerAddress)
             test_args = [env]
             if cluster:
                 test_args.append(env.envRunner.getClusterConnection())

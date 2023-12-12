@@ -4,6 +4,18 @@ from common import Env
 from websockets.sync.client import connect
 import json
 
+_DEBUG_SERVER_PORT: int = 9005
+
+def _get_debug_server_port() -> int:
+    global _DEBUG_SERVER_PORT
+    port = _DEBUG_SERVER_PORT
+    _DEBUG_SERVER_PORT += 1
+    return port
+
+def get_debug_server_address():
+    port = _get_debug_server_port()
+    return f"127.0.0.1:{port}"
+
 # This adds logging. Uncomment to see the websocket logging.
 # import logging
 # logger = logging.getLogger('websockets')
@@ -172,7 +184,12 @@ class DebuggerClient:
         self.breakpoints = []
         self.pause = None
         self.scripts_parsed = []
-        self._websocket = connect(address if address is not None else DebuggerClient.DEFAULT_WEBSOCKET_ADDRESS)
+        server_address = DebuggerClient.DEFAULT_WEBSOCKET_ADDRESS
+        if address is not None:
+            server_address = address
+        elif env.debugServerAddress is not None:
+            server_address = env.debugServerAddress
+        self._websocket = connect(f"ws://{server_address}")
         self.initiate_startup()
 
     """
@@ -335,7 +352,7 @@ class DebuggerClient:
 def deploy_script(env: Env):
     env.expect('TFUNCTION', 'LOAD', 'REPLACE', 'debug', SCRIPT).contains('The V8 remote debugging server is waiting for a connection')
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress=get_debug_server_address())
 def testDeployConnectStartDisconnect(env: Env):
     deploy_script(env)
     client = DebuggerClient(env)
@@ -349,7 +366,7 @@ def testDeployConnectStartDisconnect(env: Env):
     env.assertEqual(len(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'v'))), 0)
 
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress=get_debug_server_address())
 def testSetBreakpointAndHitIt(env: Env):
     deploy_script(env)
     client = DebuggerClient(env)
@@ -368,7 +385,7 @@ def testSetBreakpointAndHitIt(env: Env):
     # Check that Redis still operates fine.
     env.expect('PING').equal(True)
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress=get_debug_server_address())
 def testSetBreakpointAndRemoveIt(env: Env):
     deploy_script(env)
     client = DebuggerClient(env)
@@ -426,12 +443,12 @@ def assert_load_for_debug_fails(env: Env, connection):
     except BaseException:
         env.assertTrue(False, message="Didn't fail when it should have.")
 
-@gearsTest(debugServerAddress="127.0.0.1:9005", cluster=True)
+@gearsTest(debugServerAddress=get_debug_server_address(), cluster=True)
 def testNotPossibleWhenInClusterMode(env: Env, master_connection):
     for shard_connection in shardsConnections(env):
         assert_load_for_debug_fails(env, shard_connection)
 
-@gearsTest(debugServerAddress="127.0.0.1:9005", withReplicas=True)
+@gearsTest(debugServerAddress=get_debug_server_address(), withReplicas=True)
 def testNotPossibleOnReplicas(env: Env):
     slave_connection = env.getSlaveConnection()
     assert_load_for_debug_fails(env, slave_connection)
@@ -440,7 +457,7 @@ def testNotPossibleOnReplicas(env: Env):
 The async functions are ran in the background, while the processing
 happens in cron. Let's see Redis can still work fine.
 """
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress=get_debug_server_address())
 def testDebuggingAsyncFunctionInBackground(env: Env):
     deploy_script(env)
     client = DebuggerClient(env)
@@ -460,7 +477,7 @@ def testDebuggingAsyncFunctionInBackground(env: Env):
     future.equal("OK")
     client.disconnect()
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress=get_debug_server_address())
 def testKeySpaceTriggerPaused(env: Env):
     import threading
     import time
@@ -489,7 +506,7 @@ def testKeySpaceTriggerPaused(env: Env):
     env.expect('SET', 'keys:*', 'value').equal(True)
     thread.join()
 
-@gearsTest(debugServerAddress="127.0.0.1:9005")
+@gearsTest(debugServerAddress=get_debug_server_address())
 def testStreamTriggerPaused(env: Env):
     import threading
     import time
