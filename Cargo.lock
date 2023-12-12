@@ -1049,7 +1049,7 @@ dependencies = [
 
 [[package]]
 name = "redisgears_core"
-version = "2.0.15"
+version = "2.0.16"
 dependencies = [
  "byte-unit",
  "clap",
@@ -1654,8 +1654,8 @@ checksum = "5190c9442dcdaf0ddd50f37420417d219ae5261bbf5db120d0f9bab996c9cba1"
 
 [[package]]
 name = "v8_rs"
-version = "0.2.2"
-source = "git+https://github.com/RedisGears/v8-rs?tag=v0.2.2#3754c7c67c9e2a0a602c2d4d2a46125d81dd43e6"
+version = "0.2.3"
+source = "git+https://github.com/RedisGears/v8-rs?tag=v0.2.3#3c47efa0a088b66b272ef2605dd55217843dd3b3"
 dependencies = [
  "bindgen 0.59.2",
  "lazy_static",
@@ -1665,7 +1665,7 @@ dependencies = [
 [[package]]
 name = "v8_rs_derive"
 version = "0.1.0"
-source = "git+https://github.com/RedisGears/v8-rs?tag=v0.2.2#3754c7c67c9e2a0a602c2d4d2a46125d81dd43e6"
+source = "git+https://github.com/RedisGears/v8-rs?tag=v0.2.3#3c47efa0a088b66b272ef2605dd55217843dd3b3"
 dependencies = [
  "quote 1.0.33",
  "syn 1.0.109",
