@@ -168,9 +168,65 @@ redis.registerKeySpaceTrigger(
 In this case, however, there is again, might be a possible overlap of
 the values of both, that needs to be checked at deploy time.
 
+## Option 4 (Listen to the "NEW" flag by default)
+
+This is a **NOT** backwards-compatible way, which implies that all the
+key space event triggers subscribed previously (so, existing in the user
+code), after this change, will also be fired when there are conditions
+for the "NEW" flag. For this we need to patch the current key-space
+event callback in the module to also subscribe to the "NEW" events.
+After that, all the user callbacks will fired more often, and if the old
+behaviour is required, the user code will have to be adjusted to account
+for the change in the behaviour and filter our the "NEW" events.
+
+To allow for filtering out the "NEW" events (or any other event, for
+that matter), we need to expose the event in the JS API, what also
+requires a major version bump. The major version bump is required to
+signalise to the user that the behaviour has changed and the user might
+need to account for the changes manually.
+
+As of now, the `data` object in the key space trigger callback is a
+JavaScript object with members "event" (which is a string containing the
+command name used to trigger the event), the key name (`key`) as a
+string and a `key_raw` member which is also a key name but provided as
+a byte array. This solution requires adding another member there, which
+may be called, for example, `flags`, which would be a JavaScript array
+of event notification flags, the same as from the previous solutions.
+
+Having the additional `flags` member of the `data` object, would allow
+the users to filter out the undesirable events, and so would allow to
+account for the change in the default behaviour.
+
+Example:
+
+
+```JS
+#!js name=lib api_version=2.0
+
+redis.registerKeySpaceTrigger(
+  'allnotificationsexceptnew', // trigger name
+  '', //key prefix
+  function(client, data) {
+    if (data.flags.includes(EventNotificationFlags.NEW)) {
+      return;
+    }
+    console.log("Got this key data created1: " + data);
+  }, //callback
+  {
+    description: 'description',
+    onTriggerFired: function(client, data) {
+        console.log("Got this key data created2: " + data);
+    },
+  } //optional arguments
+)
+```
+
 ## Summary
 
-Both the implementations allow the user to control the key space event
-trigger subscription much deeper than it is now. Both can be done in
-a backwards-compatible way, both require additional checking and review
-of the implementation.
+The first three implementations allow the user to control the key space
+event trigger subscription much deeper than it is now. Both can be done
+in a backwards-compatible way, both require additional checking and
+review of the implementation.
+
+The fourth suggested solution is the only one which suggests a breaking
+change in the behaviour.
