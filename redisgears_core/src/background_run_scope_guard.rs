@@ -28,11 +28,11 @@ use redisai_rs::redisai::redisai_model::RedisAIModel;
 use redisai_rs::redisai::redisai_script::RedisAIScript;
 
 pub(crate) struct BackgroundRunScopeGuardCtx {
+    _notification_blocker: NotificationBlocker,
     pub(crate) detached_ctx_guard: DetachedContextGuard,
     call_options: RedisClientCallOptions,
     user: RedisString,
     lib_meta_data: Arc<GearsLibraryMetaData>,
-    _notification_blocker: NotificationBlocker,
 }
 
 unsafe impl Sync for BackgroundRunScopeGuardCtx {}
