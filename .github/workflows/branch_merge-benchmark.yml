@@ -44,7 +44,7 @@ jobs:
         cd tests/benchmarks
         redisbench-admin run-remote \
           --required-module redisgears_2 \
-          --module_path "../../target/release/libredisgears.so v8-plugin-path ../../target/release/libredisgears_v8_plugin.so" \
+          --module_path "../../target/release/libredisgears.so v8-plugin-path ../../target/release/libredisgears_v8_plugin.so v8-maxmemory 524288000" \
           --github_actor ${{ github.triggering_actor }} \
           --github_repo ${{ github.event.repository.name }} \
           --github_org ${{ github.repository_owner }} \
@@ -52,7 +52,6 @@ jobs:
           --upload_results_s3 \
           --triggering_env circleci \
           --continue-on-module-check-error \
-          --fail_fast \
           --push_results_redistimeseries \
           --redistimeseries_host ${{ secrets.PERFORMANCE_RTS_HOST }} \
           --redistimeseries_port ${{ secrets.PERFORMANCE_RTS_PORT }} \
