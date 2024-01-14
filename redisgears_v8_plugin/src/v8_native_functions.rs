@@ -300,7 +300,14 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
 
             let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
 
-            Ok(script_ctx_ref.call(&f, ctx_scope, Some(&[&c.to_value()]), GilStatus::Locked))
+            let trycatch = isolate_scope.new_try_catch();
+            let res = script_ctx_ref.call(&f, ctx_scope, Some(&[&c.to_value()]), GilStatus::Locked);
+            if res.is_none() {
+                let exception =
+                    get_exception_v8_value(&script_ctx_ref.isolate, isolate_scope, trycatch);
+                isolate_scope.raise_exception(exception);
+            }
+            Ok(res)
         }),
     );
 
