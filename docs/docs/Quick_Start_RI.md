@@ -6,7 +6,9 @@ description: >
     Get started with triggers and functions using RedisInsight
 ---
 
-Make sure that you have [Redis Stack installed](/docs/getting-started/install-stack/) and running. Alternatively, you can create a [free Redis Cloud account](https://redis.com/try-free/?utm_source=redisio&utm_medium=referral&utm_campaign=2023-09-try_free&utm_content=cu-redis_cloud_users). The triggers and functions preview is available in the fixed subscription plan for the Google Cloud Asia Pacific (Tokyo) and AWS Asia Pacific (Singapore) regions.
+Make sure that you have [Redis Stack installed](/docs/getting-started/install-stack/) and running. Alternatively, you can create a [free Redis Cloud account](https://redis.com/try-free/?utm_source=redisio&utm_medium=referral&utm_campaign=2023-09-try_free&utm_content=cu-redis_cloud_users).
+
+If you haven't already installed RedisInsight, you can download the latest version [here](https://redis.com/redis-enterprise/redis-insight/?_ga=2.232184223.127667221.1704724457-86137583.1685485233&_gl=1*1gygred*_ga*ODYxMzc1ODMuMTY4NTQ4NTIzMw..*_ga_8BKGRQKRPV*MTcwNDkyMzExMC40MDEuMS4xNzA0OTI3MjQ2LjUyLjAuMA..*_gcl_au*MTQzODY1OTU4OS4xNzAxMTg0MzY0). If this is your first time using RedisInsight, you may wish to read through the [RedisInsight guide](https://redis.io/docs/connect/insight/) before continuing with this guide.
 
 ## Connect to Redis Stack
 
