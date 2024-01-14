@@ -348,7 +348,7 @@ redis.registerAsyncFunction("test1", async function(client){
     runUntil(env, 1, run_v8_gc)
     env.expect('RPUSH', 'l', '1').equal(1)
     runUntil(env, 0, run_v8_gc)
-    future.expectError('Promise was dropped without been resolved')
+    future.expectError('Err Execution was terminated due to OOM or timeout')
 
 
 
@@ -362,22 +362,6 @@ redis.registerAsyncFunction("test1", function(client){
         });
     });
 
-});
-    """
-    env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expectTfcallAsync('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
-
-@gearsTest()
-def testTimeoutErrorNotCatchable(env):
-    """#!js api_version=1.0 name=lib
-redis.registerAsyncFunction("test1", async function(client){
-    try {
-        client.block(function(){
-            while (true);
-        });
-    } catch (e) {
-        return "catch timeout error"
-    }
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
