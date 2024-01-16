@@ -548,7 +548,7 @@ pub(crate) struct V8Backend {
 
 impl V8Backend {
     /// The name of this backend.
-    const NAME: &str = "js";
+    const NAME: &'static str = "js";
 }
 
 fn scan_for_isolates_timeout(script_ctx_vec: &ScriptCtxVec) {

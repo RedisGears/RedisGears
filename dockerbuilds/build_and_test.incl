@@ -22,7 +22,9 @@ RUN bash -l -c "$HOME/.cargo/bin/cargo deny check licenses"
 RUN bash -l -c "$HOME/.cargo/bin/cargo deny check bans"
 
 WORKDIR /build/pytests
-RUN ./run_tests.sh
+ENV PIP_BREAK_SYSTEM_PACKAGES 1
+RUN python3 -m pip install -r requirements.txt -U
+RUN python3 -m RLTest --parallelism `nproc`
 
 WORKDIR /build
 RUN bash -l -c "target/release/packer"

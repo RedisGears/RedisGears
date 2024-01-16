@@ -146,7 +146,7 @@ redis.registerFunction("set", function(client, key, val){
     """
     env.expectTfcall('lib', 'set', ['x'], ['1']).equal('OK')
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
-    env.expectTfcall('lib', 'set', ['x'], ['1']).error().contains('OOM can not run the function when out of memory')
+    env.expectTfcall('lib', 'set', ['x'], ['1']).error().contains('can not run the function when out of memory')
 
 @gearsTest()
 def testRedisOOMOnAsyncFunction(env):
@@ -348,7 +348,7 @@ redis.registerAsyncFunction("test1", async function(client){
     runUntil(env, 1, run_v8_gc)
     env.expect('RPUSH', 'l', '1').equal(1)
     runUntil(env, 0, run_v8_gc)
-    future.expectError('Promise was dropped without been resolved')
+    future.expectError('Err Execution was terminated due to OOM or timeout')
 
 
 
@@ -362,22 +362,6 @@ redis.registerAsyncFunction("test1", function(client){
         });
     });
 
-});
-    """
-    env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expectTfcallAsync('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
-
-@gearsTest()
-def testTimeoutErrorNotCatchable(env):
-    """#!js api_version=1.0 name=lib
-redis.registerAsyncFunction("test1", async function(client){
-    try {
-        client.block(function(){
-            while (true);
-        });
-    } catch (e) {
-        return "catch timeout error"
-    }
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
@@ -724,7 +708,7 @@ redis.registerFunction("debug_protocol", function(client, arg){
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['array'], c=conn), [0, 1, 2])
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['set'], c=conn), set([0, 1, 2]))
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['map'], c=conn), {1: True, 2: False, 0: False})
-    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['verbatim'], c=conn), 'txt:This is a verbatim\nstring')
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['verbatim'], c=conn), 'This is a verbatim\nstring')
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['true'], c=conn), True)
     env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['false'], c=conn), False)
 

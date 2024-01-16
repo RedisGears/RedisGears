@@ -1,9 +1,7 @@
 version: 0.2
 name: "rg_fcall_asyc"
 description: "Simple script with async execution."
-remote:
- - type: oss-1nodes
- - setup: c5.4xlarge
+
 dbconfig:
   - init_commands:
     - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerAsyncFunction('foo', async ()=>{return 1;});"]

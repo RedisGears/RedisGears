@@ -6,9 +6,7 @@ description: "RedisGears 2.0 comes with a full stream API to processes data from
               You should compare against sync notifications processing ( test name rg_stream_process_empty_sync )
               and no processing ( test name rg_stream_baseline ).
              "
-remote:
- - type: oss-1nodes
- - setup: c5.4xlarge
+
 dbconfig:
   - init_commands:
     - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerStreamTrigger(     'consumer',     'stream',      async  function(c, data) {  return;  } );"]

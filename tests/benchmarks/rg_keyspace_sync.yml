@@ -3,9 +3,7 @@ name: "rg_keyspace_sync"
 description: " The following example shows how to register a database trigger 
                that will call a command in an syc manner when ever a key is changed.
              "
-remote:
- - type: oss-1nodes
- - setup: c5.4xlarge
+
 dbconfig:
   - init_commands:
     - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerKeySpaceTrigger('consumer', '', function(client, data){     if (client.call('type', data.key) != 'hash') {                  return;     }      var curr_time = client.call('time')[0];       client.call('hset', data.key, '__last_updated__', curr_time); });"]
