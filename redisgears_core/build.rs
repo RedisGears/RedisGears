@@ -152,10 +152,7 @@ fn main() {
     };
 
 
-    let mut os_arch = std::env::consts::ARCH.to_string().to_lowercase();
-    if os_arch == "aarch64" {
-        os_arch = "arm64v8".to_string();
-    }
+    let os_arch = std::env::consts::ARCH.to_string().to_lowercase();
 
     println!("cargo:rustc-env=BUILD_OS_NICK={}", os_nick);
     println!("cargo:rustc-env=BUILD_OS_ARCH={}", os_arch);
