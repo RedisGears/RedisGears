@@ -81,6 +81,8 @@ commands:
       - run:
           name: pip install
           command: |
+            python3 -m venv .venv
+            source .venv/bin/activate
             python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
             python3 -m pip install s3cmd
             if [ ! -f /usr/local/bin/ramp ]; then
@@ -117,6 +119,7 @@ commands:
             PIP_BREAK_SYSTEM_PACKAGES: 1
           command: |
             ulimit -n 1024
+            source .venv/bin/activate
             python3 -m pip install -r requirements.txt -U
             python3 -m RLTest --no-progress
       - run:
