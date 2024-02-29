@@ -83,6 +83,7 @@ commands:
           command: |
             python3 -m venv .venv
             source .venv/bin/activate
+            python3 -m pip install --upgrade setuptools ## needed for pkg_resources, deprecated in setuptools
             python3 -m pip install RLTest
             python3 -m pip install -U redis==5.0.0b4
             python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
