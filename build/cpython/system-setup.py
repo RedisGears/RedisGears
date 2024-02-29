@@ -17,7 +17,8 @@ class Python3Setup(paella.Setup):
         paella.Setup.__init__(self, nop)
 
     def common_first(self):
-        self.install_downloaders()
+        if self.osnick != "centos9":
+            self.install_downloaders()
 
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
@@ -35,6 +36,11 @@ class Python3Setup(paella.Setup):
         self.install("lsb-release")
 
     def redhat_compat(self):
+        if self.osnick == "centos9":
+            self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libuuid-devel ncurses-devel "
+                "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel libatomic file")
+            return
+
         self.run("%s/bin/getepel" % READIES)
         self.run("%s/bin/getgcc --modern" % READIES)
         self.install("autoconf automake libtool")

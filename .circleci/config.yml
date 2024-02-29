@@ -444,7 +444,7 @@ workflows:
           context: common
           matrix:
             parameters:
-              platform: [focal, bionic, xenial, centos7, rocky8, bullseye]
+              platform: [focal, bionic, xenial, centos7, rocky8, rocky9, bullseye]
       - valgrind:
           <<: *on-integ-and-version-tags
       - tls:

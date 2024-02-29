@@ -17,7 +17,10 @@ class RedisGearsSetup(paella.Setup):
         self.with_python = with_python
 
     def common_first(self):
-        self.install_downloaders()
+        if self.osnick != 'centos9':
+            self.install_downloaders()
+        else:
+            self.install("wget")
 
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
@@ -40,6 +43,15 @@ class RedisGearsSetup(paella.Setup):
             self.pip_install("gevent")
 
     def redhat_compat(self):
+        if self.osnick == "centos9":
+            self.install("gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-libatomic-devel autoconf automake libtool")
+            self.install("yum-utils")
+            self.run("dnf config-manager --set-enabled devel")
+            self.run("dnf update -y")
+            self.run("dnf install -y redhat-lsb")
+            self.pip_install("redis ramp-packer rltest")
+            return
+
         self.run("%s/bin/getgcc --modern" % READIES)
         self.install("autoconf automake libtool")
 
@@ -81,7 +93,8 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("gevent")
 
     def common_last(self):
-        self.run("{PYTHON} {READIES}/bin/getrmpytools --reinstall --modern".format(PYTHON=self.python, READIES=READIES))
+        if self.osnick != "centos9":
+            self.run("{PYTHON} {READIES}/bin/getrmpytools --reinstall --modern".format(PYTHON=self.python, READIES=READIES))
         if self.with_python:
             self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
                      format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
