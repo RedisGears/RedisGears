@@ -81,6 +81,8 @@ commands:
       - run:
           name: pip install
           command: |
+            python3 -m venv .venv
+            source .venv/bin/activate
             python3 -m pip install RLTest
             python3 -m pip install -U redis==5.0.0b4
             python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
@@ -117,6 +119,7 @@ commands:
           working_directory: pytests
           command: |
             ulimit -n 1024
+            source .venv/bin/activate
             ./run_tests.sh --no-progress
       - run:
           shell: /bin/bash -l -eo pipefail
