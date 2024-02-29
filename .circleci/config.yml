@@ -119,7 +119,7 @@ commands:
           working_directory: pytests
           command: |
             ulimit -n 1024
-            source .venv/bin/activate
+            source ../.venv/bin/activate
             ./run_tests.sh --no-progress
       - run:
           shell: /bin/bash -l -eo pipefail
