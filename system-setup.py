@@ -19,6 +19,8 @@ class RedisGearsSetup(paella.Setup):
     def common_first(self):
         if self.osnick != 'centos9':
             self.install_downloaders()
+        else:
+            self.install("wget")
 
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
