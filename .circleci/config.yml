@@ -125,6 +125,7 @@ commands:
       - run:
           shell: /bin/bash -l -eo pipefail
           command: |
+            source ../.venv/bin/activate
             target/release/packer
       - s3-upload:
           publish: <<parameters.publish>>
