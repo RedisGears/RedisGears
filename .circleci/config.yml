@@ -119,12 +119,13 @@ commands:
             PIP_BREAK_SYSTEM_PACKAGES: 1
           command: |
             ulimit -n 1024
-            source .venv/bin/activate
+            source ../.venv/bin/activate
             python3 -m pip install -r requirements.txt -U
             python3 -m RLTest --no-progress
       - run:
           shell: /bin/bash -l -eo pipefail
           command: |
+            source .venv/bin/activate
             target/release/packer
       - s3-upload:
           publish: <<parameters.publish>>
