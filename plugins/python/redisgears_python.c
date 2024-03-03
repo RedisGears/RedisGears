@@ -2942,7 +2942,7 @@ static PyObject* getGearsSession(PyObject *cls, PyObject *args){
 
         if(pyExSes->cmdCtx){
            pyExSes->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pyExSes->cmdCtx);
-       }
+        }
 
         res = (PyObject*)pyExSes;
     }
@@ -4552,6 +4552,110 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     return Py_True;
 }
 
+typedef struct PostNotificationJobCtx {
+    PythonSessionCtx* s;
+    CommandReaderTriggerCtx* crtCtx;
+    CommandCtx* cmdCtx;
+    PyObject* callback;
+} PostNotificationJobCtx;
+
+static void postNotificationJobFreePD(void *pd) {
+	PostNotificationJobCtx* pnjCtx = pd;
+
+	PythonExecutionCtx pectx = PythonExecutionCtx_New(pnjCtx->s, NULL);
+	RedisGearsPy_Lock(&pectx);
+	GearsPyDecRef(pnjCtx->callback);
+	RedisGearsPy_Unlock(&pectx);
+
+	if(pnjCtx->s){
+		PythonSessionCtx_Free(pnjCtx->s);
+	}
+	if(pnjCtx->crtCtx){
+		RedisGears_CommandReaderTriggerCtxFree(pnjCtx->crtCtx);
+	}
+	if(pnjCtx->cmdCtx){
+		RedisGears_CommandCtxFree(pnjCtx->cmdCtx);
+	}
+
+	RG_FREE(pnjCtx);
+}
+
+static void postNotificationJobFunc(RedisModuleCtx *ctx, void *pd) {
+	PostNotificationJobCtx* pnjCtx = pd;
+
+	PythonThreadCtx* ptctx = GetPythonThreadCtx();
+	ptctx->crtCtx = pnjCtx->crtCtx;
+	ptctx->commandCtx = pnjCtx->cmdCtx;
+
+	PythonExecutionCtx pectx = PythonExecutionCtx_New(pnjCtx->s, NULL);
+	RedisGearsPy_Lock(&pectx);
+
+	PyObject* pArgs = PyTuple_New(0);
+	PyObject* res = PyObject_CallObject(pnjCtx->callback, pArgs);
+	GearsPyDecRef(pArgs);
+
+	if(!res){
+	   char* err = getPyError();
+	   RedisModule_Log(staticCtx, "warning", "Error on running post notification job, error='%s'.", err);
+	   RG_FREE(err);
+	} else {
+		GearsPyDecRef(res);
+	}
+
+	RedisGearsPy_Unlock(&pectx);
+	ptctx->crtCtx = NULL;
+	ptctx->commandCtx = NULL;
+
+}
+
+static PyObject* registerPostNotificationJob(PyObject *cls, PyObject *args){
+	if(!RMAPI_FUNC_SUPPORTED(RedisModule_AddPostNotificationJob)){
+		PyErr_SetString(GearsError, "post notification job api is not supported on the current Redis version");
+		return NULL;
+	}
+	if(PyTuple_Size(args) < 1 || PyTuple_Size(args) > 2){
+		PyErr_SetString(GearsError, "not enough arguments for registerPostExecutionJob");
+		return NULL;
+	}
+	PyObject* callback = PyTuple_GetItem(args, 0);
+	if(!PyFunction_Check(callback)){
+		PyErr_SetString(GearsError, "argument to registerPostExecutionJob must be a function");
+		return NULL;
+	}
+
+	PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+	if(!ptctx->currSession){
+		PyErr_SetString(GearsError, "can not get current session, thread was not properly registered.");
+		return NULL;
+	}
+
+	Py_INCREF(callback);
+
+	PostNotificationJobCtx* pnjCtx = RG_ALLOC(sizeof(*pnjCtx));
+	pnjCtx->s = PythonSessionCtx_ShallowCopy(ptctx->currSession);
+	pnjCtx->crtCtx = getCommandReaderTriggerCtx(ptctx);
+	pnjCtx->cmdCtx = getCommandCtx(ptctx);
+	pnjCtx->callback = callback;
+
+	if(pnjCtx->crtCtx){
+		pnjCtx->crtCtx = RedisGears_CommandReaderTriggerCtxGetShallowCopy(pnjCtx->crtCtx);
+	}
+
+	if(pnjCtx->cmdCtx){
+		pnjCtx->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pnjCtx->cmdCtx);
+	}
+
+	RedisGears_LockHanlderAcquire(staticCtx);
+
+	RedisModule_AddPostNotificationJob(staticCtx, postNotificationJobFunc, pnjCtx, postNotificationJobFreePD);
+
+	RedisGears_LockHanlderRelease(staticCtx);
+
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+
 static PyObject* flatError(PyObject *cls, PyObject *args){
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "not enough arguments for time flat error");
@@ -4685,6 +4789,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"overrideReply", overrideReply, METH_VARARGS, "override the reply with the given python value, raise error if there is no command to override its reply"},
     {"isAsyncAllow", isAsyncAllow, METH_VARARGS, "return true iff async await is allow"},
     {"flatError", flatError, METH_VARARGS, "return flat error object that will be return to the user without extracting the trace"},
+    {"registerPostNotificationJob", registerPostNotificationJob, METH_VARARGS, "return flat error object that will be return to the user without extracting the trace"},
     {NULL, NULL, 0, NULL}
 };
 

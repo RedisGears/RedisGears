@@ -482,7 +482,7 @@ def testRegistersSurviveRestart(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB().filter(lambda x: 'NumOfKeys' not in x['key'])."
                             "foreach(lambda x: execute('incrby', 'NumOfKeys{%s}' % (hashtag()), ('-1' if x['event'] == 'del' else '1')))."
-                            "register(mode='async_local')")
+                            "register(mode='async_local', eventTypes=['set', 'del'])")
 
     # todo: change it not to use sleep
     time.sleep(0.5) # wait for registration to reach all the shards
@@ -492,21 +492,20 @@ def testRegistersSurviveRestart(env):
             conn.set(str(i), str(i))
 
         res = 0
-        while res < 40:
+        while res < 20:
             res = int(env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")[0][0])
 
         for i in range(20):
             conn.delete(str(i))
 
         res = 0
-        while res < 80:
+        while res < 40:
             res = int(env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")[0][0])
 
         # wait for all executions to finish
 
         numOfKeys = env.cmd('rg.pyexecute', "GB().map(lambda x: int(x['value'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run('NumOfKeys*')")[0][0]
         env.assertEqual(numOfKeys, '0')
-
 
     # deleting all executions from all the shards, execution list are not identical so we use gears to clear it.
     res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').flatmap(lambda x: [r[1] for r in execute('rg.dumpexecutions')]).foreach(lambda x: execute('RG.DROPEXECUTION', x)).run()")
@@ -1182,10 +1181,10 @@ GB("CommandReader").map(doHset).register(hook="hset", convertToStr=False)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for data to sync to slave')
 
-@gearsTest()
+@gearsTest(skipOnRedis=['6.0', '6.2', '7.0'])
 def testMultipleRegistrationsSameBuilderWithKeysReader(env):
     script = '''
-gb = GB().foreach(lambda x: execute('del', x['key']))
+gb = GB().foreach(lambda x: registerPostNotificationJob(lambda: execute('del', x['key'])))
 gb.register(prefix='foo', readValue=False, mode='sync')
 gb.register(prefix='bar', readValue=False, mode='sync')
     '''
@@ -2109,3 +2108,42 @@ GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(batch=2, onF
         if 'timeout' not in str(e):
             sys.stderr.write('%s\n' % str(e))
         env.assertContains('timeout', str(e))
+
+@gearsTest(skipOnCluster=True, skipOnRedis=['6.0', '6.2', '7.0'])
+def testBeforeDeleteNotification(env):
+    env.expect('rg.pyexecute', "GB().foreach(lambda x: registerPostNotificationJob(lambda: execute('set', x['key'], x['value']))).register(eventTypes=['before_deleted'], mode='sync')").ok()
+    verifyRegistrationIntegrity(env)
+    env.expect('set', 'x', '1').equal(True)
+    env.expect('del', 'x', '1').equal(1)
+    env.expect('get', 'x').equal('1')
+
+@gearsTest(skipOnCluster=True, skipOnRedis=['6.0', '6.2', '7.0'])
+def testBeforeExpireNotification(env):
+    script = '''
+def postJob(x):
+    def f():
+        log('running post:' + str(x))
+        log(str(execute('set', x['key'] + '_new', x['value'])))
+        log(str(execute('get', x['key'] + '_new')))
+    registerPostNotificationJob(f)
+    
+GB().foreach(postJob).register(eventTypes=['before_expired'], mode='sync')
+'''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+    env.expect('set', 'x', '1').equal(True)
+    env.expect('PEXPIRE', 'x', '10').equal(True)
+
+    # wait for the key to be expired
+    try:
+        with TimeLimit(1):
+            while True:
+                if env.cmd('get', 'x') == None:
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        if 'timeout' not in str(e):
+            sys.stderr.write('%s\n' % str(e))
+        env.assertContains('timeout', str(e))
+    env.expect('get', 'x_new').equal('1')
+

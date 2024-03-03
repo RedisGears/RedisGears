@@ -290,7 +290,7 @@ def testMaxExecutions(env):
     ## todo: currently there is a problem with MaxExecutions which might cause running executions to be drop and the redis server
     ##       to crash, this is why I increased the sleep interval, we should fix it ASAP.
     conn = getConnectionByEnv(env)
-    env.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register('*')", 'UNBLOCKING')
+    env.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register(prefix='*', eventTypes=['set'])", 'UNBLOCKING')
     time.sleep(1)
     conn.execute_command('set', 'x', '0')
     conn.execute_command('set', 'x', '1')
@@ -846,19 +846,19 @@ def test1676(env):
     time.sleep(0.1) # make sure shard did not crash
     env.expect('ping').equal(True)
 
-@gearsTest(skipOnCluster=True, skipOnRedis6=True)
+@gearsTest(skipOnCluster=True, skipOnRedis=['6.0'])
 def testRecursiveGearsBuilder(env):
     env.cmd('set', 'x', '1')
     res = env.cmd('RG.PYEXECUTE', "GearsBuilder().map(lambda x: execute('RG.PYEXECUTE', 'GearsBuilder().run()')).run()")
     env.assertContains('blocking is not allowed', res[1][0])
 
-@gearsTest(skipOnCluster=True, skipOnRedis6=True)
+@gearsTest(skipOnCluster=True, skipOnRedis=['6.0'])
 def testOverrideSetWithAsyncExecution(env):
     env.expect('RG.PYEXECUTE', "GearsBuilder('CommandReader').register(hook='set')").equal('OK')
     res = env.cmd('RG.PYEXECUTE', "GearsBuilder('ShardsIDReader').map(lambda x: execute('set', 'x', '1')).run()")
     env.assertContains('blocking is not allowed', res[1][0])
 
-@gearsTest(skipOnCluster=True, skipOnRedis6=True)
+@gearsTest(skipOnCluster=True, skipOnRedis=['6.0'])
 def testKeysReaderCommandsOptionWithAsyncExecution(env):
     env.expect('RG.PYEXECUTE', "GearsBuilder().foreach(lambda x: override_reply('-no allowed')).register(commands=['set'])").equal('OK')
     env.expect('set', 'x', '1').error().equal('no allowed')
