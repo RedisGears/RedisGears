@@ -127,9 +127,17 @@ commands:
           command: |
             source .venv/bin/activate
             target/release/packer
-      - s3-upload:
-          publish: <<parameters.publish>>
-          srcdir: target/release
+      - run:
+          shell: /bin/bash -l -eo pipefail
+          working_directory: target/release
+          command: |
+            source ../../.venv/bin/activate
+            if [[ "<<parameters.publish>>" == "true" ]]; then
+              s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
+                put -P redisgears*.zip \
+                s3://redismodules/redisgears/snapshots/
+            fi
+
 jobs:
 
   build-arm:
