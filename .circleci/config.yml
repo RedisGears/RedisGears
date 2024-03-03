@@ -81,6 +81,9 @@ commands:
       - run:
           name: pip install
           command: |
+            python3 -m venv .venv
+            source .venv/bin/activate
+            python3 -m pip install --upgrade setuptools
             python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
             python3 -m pip install s3cmd
             if [ ! -f /usr/local/bin/ramp ]; then
@@ -117,15 +120,25 @@ commands:
             PIP_BREAK_SYSTEM_PACKAGES: 1
           command: |
             ulimit -n 1024
+            source ../.venv/bin/activate
             python3 -m pip install -r requirements.txt -U
             python3 -m RLTest --no-progress
       - run:
           shell: /bin/bash -l -eo pipefail
           command: |
+            source .venv/bin/activate
             target/release/packer
-      - s3-upload:
-          publish: <<parameters.publish>>
-          srcdir: target/release
+      - run:
+          shell: /bin/bash -l -eo pipefail
+          working_directory: target/release
+          command: |
+            source ../../.venv/bin/activate
+            if [[ "<<parameters.publish>>" == "true" ]]; then
+              s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
+                put -P redisgears*.zip \
+                s3://redismodules/redisgears/snapshots/
+            fi
+
 jobs:
 
   build-arm:
