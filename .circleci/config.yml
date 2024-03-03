@@ -131,7 +131,7 @@ commands:
           shell: /bin/bash -l -eo pipefail
           working_directory: target/release
           command: |
-            source ..venv/bin/activate
+            source ../../.venv/bin/activate
             if [[ "<<parameters.publish>>" == "true" ]]; then
               s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
                 put -P redisgears*.zip \
