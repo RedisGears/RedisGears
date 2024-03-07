@@ -3,7 +3,7 @@ name = "redisgears_core"
 version = "99.99.99"
 edition = "2021"
 license = "LicenseRef-RSALv2 OR SSPL-1.0"
-rust-version = "1.70"
+rust-version = "1.74"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
