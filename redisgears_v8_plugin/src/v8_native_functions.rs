@@ -1436,9 +1436,10 @@ pub(crate) fn initialize_globals_1_0(
         ctx_scope,
         LOG_GLOBAL_NAME,
         new_native_function!(move |_isolate, _curr_ctx_scope, msg: V8LocalUtf8| {
+            let m = msg.as_str().escape_default().to_string();
             match script_ctx_ref.upgrade() {
-                Some(s) => s.compiled_library_api.log_info(msg.as_str()),
-                None => crate::v8_backend::log_info(msg.as_str()), /* do not abort logs */
+                Some(s) => s.compiled_library_api.log_info(m.as_str()),
+                None => crate::v8_backend::log_info(m.as_str()), /* do not abort logs */
             }
             Ok::<Option<V8LocalValue>, String>(None)
         }),
