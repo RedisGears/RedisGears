@@ -215,6 +215,19 @@ static mut GLOBAL: Globals = Globals {
     global_options: GlobalOptions::empty(),
 };
 
+/// Log a generic script message which are not related to
+/// a specific library.
+/// Gears core will decide if this message should go to the
+/// Redis log file.
+pub(crate) fn log_script_message(msg: &str) {
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().log_script_message)(msg)
+    };
+    #[cfg(test)]
+    println!("log message: {msg}");
+}
+
 /// Log a generic info message which are not related to
 /// a specific library.
 /// Notice that logging messages which are library related

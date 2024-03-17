@@ -14,6 +14,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{GearsApiError, GearsApiResult
 
 use crate::compiled_library_api::{CompiledLibraryAPI, CompiledLibraryInternals};
 use crate::config::V8_DEBUG_SERVER_ADDRESS;
+use crate::get_globals;
 use crate::GILBackendStorage;
 use crate::{verify_name, Deserialize, Serialize};
 
@@ -170,11 +171,12 @@ fn compile_library(
     compilation_arguments: &CompilationArguments,
     debug: bool,
 ) -> GearsApiResult<CompiledLibraryData> {
+    let globals = get_globals();
     let meta_data = compilation_arguments
         .get_metadata()
         .map_err(GearsApiError::from)?;
     let backend = compilation_arguments.get_backend_mut(context)?;
-    let compile_lib_ctx = CompiledLibraryAPI::new();
+    let compile_lib_ctx = CompiledLibraryAPI::new(globals.redis_version.is_enterprise);
     let compile_lib_internals = compile_lib_ctx.take_internals();
     let library = backend.compile_library(
         debug,
