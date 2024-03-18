@@ -116,14 +116,14 @@ pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
 const PSEUDO_SLAVE_READONLY_CONFIG_NAME: &str = "pseudo-slave-readonly";
 const PSEUDO_SLAVE_CONFIG_NAME: &str = "pseudo-slave";
 
-fn get_and_verify_redis_version_compatible(ctx: &Context) -> Result<Version, String> {
+fn get_and_verify_redis_version_compatible(ctx: &Context) -> Result<RedisVersion, String> {
     const VERSION: Version = Version {
         major: 7,
         minor: 1,
         patch: 242,
     };
 
-    let v = match ctx.get_redis_version() {
+    let version = match ctx.get_redis_version() {
         Ok(v) => {
             if v.cmp(&VERSION) == std::cmp::Ordering::Less {
                 return Err(format!(
@@ -138,7 +138,15 @@ fn get_and_verify_redis_version_compatible(ctx: &Context) -> Result<Version, Str
         }
     };
 
-    Ok(v)
+    let is_enterprise = ctx
+        .server_info("server")
+        .field("rlec_version")
+        .map_or(false, |_| true);
+
+    Ok(RedisVersion {
+        version,
+        is_enterprise,
+    })
 }
 
 /// A string converted into a sha256 hash-sum. The string is unique
@@ -589,6 +597,7 @@ impl DbPolicy {
     }
 }
 
+#[derive(Debug)]
 struct RedisVersion {
     version: Version,
     is_enterprise: bool,
@@ -943,22 +952,12 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         Err(_) => ctx.log_notice("Failed loading RedisAI API."),
     }
 
-    let version = match get_and_verify_redis_version_compatible(ctx) {
+    let redis_version = match get_and_verify_redis_version_compatible(ctx) {
         Ok(v) => v,
         Err(e) => {
             log::error!("{e}");
             return Status::Err;
         }
-    };
-
-    let is_enterprise = ctx
-        .server_info("server")
-        .field("rlec_version")
-        .map_or(false, |_| true);
-
-    let redis_version = RedisVersion {
-        version,
-        is_enterprise,
     };
 
     log::info!(
@@ -1002,6 +1001,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     };
 
     let v8_flags = V8_FLAGS.lock(ctx).to_owned();
+    let is_enterprise = redis_version.is_enterprise;
     let backend_ctx = BackendCtx {
         allocator: &RedisAlloc,
         log_info: Box::new(|msg| log::info!("{msg}")),
