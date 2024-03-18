@@ -10,7 +10,7 @@ def testDependenciesInstall(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                             "map(lambda x: str(__import__('redis')))."
-                            "collect().distinct().run()", 'REQUIREMENTS', 'redis')
+                            "collect().distinct().run()", 'REQUIREMENTS', 'redis==3')
     env.assertEqual(len(res[0]), env.shardsCount)
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redis'", res[0][0])
@@ -20,7 +20,7 @@ def testDependenciesInstallWithVersionGreater(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                             "map(lambda x: str(__import__('redis')))."
-                            "collect().distinct().run()", 'REQUIREMENTS', 'redis>=3')
+                            "collect().distinct().run()", 'REQUIREMENTS', 'redis>=2,<=3')
     env.assertEqual(len(res[0]), env.shardsCount)
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redis'", res[0][0])
@@ -46,7 +46,7 @@ def testDependenciesInstallFailure(env):
 def testDependenciesWithRegister(env):
     env.expect('RG.PYEXECUTE', "GB()."
                                "map(lambda x: __import__('redis'))."
-                               "collect().distinct().register()", 'REQUIREMENTS', 'redis').ok()
+                               "collect().distinct().register()", 'REQUIREMENTS', 'redis==3').ok()
 
     for _ in env.reloading_iterator():
         res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
@@ -138,7 +138,7 @@ def testDependenciesImportSerializationError(env):
 @gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'}, executionMaxIdleTime=60000)
 def testDependenciesForceUpgrade(env):
     getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'REQUIREMENTS', 'redis').equal('OK')
+    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'REQUIREMENTS', 'redis==3').equal('OK')
     res1 = env.cmd('RG.TRIGGER', "test")
     res1.sort()
 
@@ -149,7 +149,7 @@ def testDependenciesForceUpgrade(env):
         env.assertEqual(len(reqs), 1)
         paths1.append(reqs[0][13])
     
-    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'REQUIREMENTS', 'redis').equal('OK')
+    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'REQUIREMENTS', 'redis==3').equal('OK')
     res2 = env.cmd('RG.TRIGGER', "test")
     res2.sort()
     env.assertEqual(res1, res2)
@@ -165,7 +165,7 @@ def testDependenciesForceUpgrade(env):
     paths2.sort()
     env.assertEqual(paths1, paths2)
 
-    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'FORCE_REINSTALL_REQUIREMENTS', 'REQUIREMENTS', 'redis').equal('OK')
+    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'FORCE_REINSTALL_REQUIREMENTS', 'REQUIREMENTS', 'redis==3').equal('OK')
     res3 = env.cmd('RG.TRIGGER', "test")
     res3.sort()
     env.assertNotEqual(res3, res2)
@@ -183,14 +183,14 @@ def testDependenciesForceUpgrade(env):
 @gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'}, executionMaxIdleTime=60000)
 def testDependenciesForceUpgradeFailure(env):
     getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'REQUIREMENTS', 'redis').equal('OK')
+    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'REQUIREMENTS', 'redis==3').equal('OK')
     paths1 = []
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
         reqs = c.execute_command('rg.pydumpreqs')
         env.assertEqual(len(reqs), 1)
         paths1.append(reqs[0][13])
-    env.expect('RG.PYEXECUTE', "import redis1;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'FORCE_REINSTALL_REQUIREMENTS', 'REQUIREMENTS', 'redis').error()
+    env.expect('RG.PYEXECUTE', "import redis1;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'FORCE_REINSTALL_REQUIREMENTS', 'REQUIREMENTS', 'redis==3').error()
     paths2 = []
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
