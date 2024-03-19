@@ -59,6 +59,13 @@ static int stringsKeyCompare(void *privdata, const void *key1, const void *key2)
     const char* strKey1 = key1;
     const char* strKey2 = key2;
 
+    return strcmp(strKey1, strKey2) == 0;
+}
+
+static int stringsKeyCaseCompare(void *privdata, const void *key1, const void *key2){
+    const char* strKey1 = key1;
+    const char* strKey2 = key2;
+
     return strcasecmp(strKey1, strKey2) == 0;
 }
 
@@ -92,7 +99,7 @@ Gears_dictType Gears_dictTypeHeapStringsCaseInsensitive = {
         .hashFunction = stringsCaseHashFunction,
         .keyDup = stringsKeyDup,
         .valDup = NULL,
-        .keyCompare = stringsKeyCompare,
+        .keyCompare = stringsKeyCaseCompare,
         .keyDestructor = stringsKeyDestructor,
         .valDestructor = NULL,
 };
