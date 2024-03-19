@@ -14,7 +14,7 @@ use keys_notifications_ctx::KeySpaceNotificationsCtx;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::{
     BlockingCallOptions, CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply,
-    PromiseCallReply, RedisGILGuard,
+    PromiseCallReply, RedisGILGuard, Version,
 };
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{
@@ -116,16 +116,14 @@ pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
 const PSEUDO_SLAVE_READONLY_CONFIG_NAME: &str = "pseudo-slave-readonly";
 const PSEUDO_SLAVE_CONFIG_NAME: &str = "pseudo-slave";
 
-fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
-    use redis_module::Version;
-
+fn get_and_verify_redis_version_compatible(ctx: &Context) -> Result<RedisVersion, String> {
     const VERSION: Version = Version {
         major: 7,
         minor: 1,
         patch: 242,
     };
 
-    match ctx.get_redis_version() {
+    let version = match ctx.get_redis_version() {
         Ok(v) => {
             if v.cmp(&VERSION) == std::cmp::Ordering::Less {
                 return Err(format!(
@@ -133,13 +131,22 @@ fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
                     VERSION.major, VERSION.minor, VERSION.patch
                 ));
             }
+            v
         }
         Err(e) => {
             return Err(format!("Failed getting Redis version, version is probably to old, please use Redis 7.0 or above. {}", e));
         }
-    }
+    };
 
-    Ok(())
+    let is_enterprise = ctx
+        .server_info("server")
+        .field("rlec_version")
+        .map_or(false, |_| true);
+
+    Ok(RedisVersion {
+        version,
+        is_enterprise,
+    })
 }
 
 /// A string converted into a sha256 hash-sum. The string is unique
@@ -590,7 +597,14 @@ impl DbPolicy {
     }
 }
 
+#[derive(Debug)]
+struct RedisVersion {
+    version: Version,
+    is_enterprise: bool,
+}
+
 struct GlobalCtx {
+    redis_version: RedisVersion,
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
     backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
     uninitialised_backends: HashMap<String, Box<dyn BackendCtxInterfaceUninitialised>>,
@@ -938,20 +952,25 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         Err(_) => ctx.log_notice("Failed loading RedisAI API."),
     }
 
+    let redis_version = match get_and_verify_redis_version_compatible(ctx) {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("{e}");
+            return Status::Err;
+        }
+    };
+
     log::info!(
-        "RedisGears v{}, sha='{}', build_type='{}', built_for='{}-{}.{}'.",
+        "RedisGears v{}, sha='{}', build_type='{}', built_for='{}-{}.{}', redis_version:'{}', enterprise:'{}'.",
         VERSION_STR.unwrap_or_default(),
         GIT_SHA.unwrap_or_default(),
         BUILD_TYPE.unwrap_or_default(),
         BUILD_OS.unwrap_or_default(),
         BUILD_OS_NICK.unwrap_or_default(),
-        BUILD_OS_ARCH.unwrap_or_default()
+        BUILD_OS_ARCH.unwrap_or_default(),
+        format!("{}.{}.{}", redis_version.version.major, redis_version.version.minor, redis_version.version.patch),
+        redis_version.is_enterprise,
     );
-
-    if let Err(e) = check_redis_version_compatible(ctx) {
-        log::error!("{e}");
-        return Status::Err;
-    }
 
     if let Err(e) = verify_v8_mem_usage_values() {
         log::error!("{e}");
@@ -982,13 +1001,21 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     };
 
     let v8_flags = V8_FLAGS.lock(ctx).to_owned();
+    let is_enterprise = redis_version.is_enterprise;
     let backend_ctx = BackendCtx {
         allocator: &RedisAlloc,
         log_info: Box::new(|msg| log::info!("{msg}")),
         log_trace: Box::new(|msg| log::trace!("{msg}")),
         log_debug: Box::new(|msg| log::debug!("{msg}")),
         log_error: Box::new(|msg| log::error!("{msg}")),
-        log_warning: Box::new(|msg| log::warn!("{msg}")),
+        log_warning: Box::new(|msg| log::info!("{msg}")),
+        log_script_message: Box::new(move |msg| {
+            if is_enterprise {
+                log::debug!("{msg}")
+            } else {
+                log::info!("{msg}")
+            }
+        }),
         get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
             FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
             FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
@@ -1016,6 +1043,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         return Status::Err;
     }
     let global_ctx = GlobalCtx {
+        redis_version,
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
         uninitialised_backends: HashMap::from([(v8_backend_name, v8_backend)]),
