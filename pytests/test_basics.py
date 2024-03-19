@@ -21,6 +21,16 @@ redis.registerFunction("test", function(){
     env.expectTfcall('foo', 'test').equal(1)
 
 @gearsTest()
+def testLogWithBinaryData(env):
+    """#!js api_version=1.0 name=foo
+redis.registerFunction("test", function(){
+    redis.log('foo\x00\xaa');
+    return 1
+})
+    """
+    env.expectTfcall('foo', 'test').equal(1)
+
+@gearsTest()
 def testCommandInvocation(env):
     """#!js api_version=1.0 name=foo
 redis.registerFunction("test", function(client){
