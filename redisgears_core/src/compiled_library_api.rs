@@ -64,12 +64,14 @@ impl CompiledLibraryInternals {
 
 pub(crate) struct CompiledLibraryAPI {
     internals: Arc<CompiledLibraryInternals>,
+    log_scirpt_msg_for_debug: bool,
 }
 
 impl CompiledLibraryAPI {
-    pub(crate) fn new() -> CompiledLibraryAPI {
+    pub(crate) fn new(log_scirpt_msg_for_debug: bool) -> CompiledLibraryAPI {
         CompiledLibraryAPI {
             internals: Arc::new(CompiledLibraryInternals::new()),
+            log_scirpt_msg_for_debug,
         }
     }
 
@@ -83,6 +85,14 @@ impl CompiledLibraryAPI {
 }
 
 impl CompiledLibraryInterface for CompiledLibraryAPI {
+    fn log_script_message(&self, msg: &str) {
+        if self.log_scirpt_msg_for_debug {
+            log::debug!("{msg}");
+        } else {
+            log::info!("{msg}");
+        }
+    }
+
     fn log_debug(&self, msg: &str) {
         log::debug!("{msg}");
     }
