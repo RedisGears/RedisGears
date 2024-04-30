@@ -341,6 +341,10 @@ allow-globs = ["*"]
 name = "winapi-i686-pc-windows-gnu"
 allow-globs = ["*"]
 
+[[bans.build.bypass]]
+name = "windows_i686_gnullvm"
+allow-globs = ["*"]
+
 # This section is considered when running `cargo deny check sources`.
 # More documentation about the 'sources' section can be found here:
 # https://embarkstudios.github.io/cargo-deny/checks/sources/cfg.html
