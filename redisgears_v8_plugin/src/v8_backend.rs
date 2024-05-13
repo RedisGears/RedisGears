@@ -816,7 +816,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let trycatch = isolate_scope.new_try_catch();
                 let script = ctx_scope
                     .compile(&v8code_str)
-                    .ok_or(get_exception_msg(&isolate, trycatch, &ctx_scope))?;
+                    .ok_or_else(|| get_exception_msg(&isolate, trycatch, &ctx_scope))?;
 
                 let script = script.persist();
                 let tensor_obj_template = get_tensor_object_template(&isolate_scope);
