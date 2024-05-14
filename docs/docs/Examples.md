@@ -12,7 +12,7 @@ Redis Stack's triggers and functions feature enables the detection of changes to
 - **Travel**: For the travel industry, a trigger can be utilized to detect new flight bookings and efficiently load the relevant information into a queue for different consumers. Services can then leverage this data to provide recommendations for hotels, restaurants, car rental services, and more. Leveraging Redis geometries, powerful recommendation systems can offer localized and personalized suggestions.
 - **Subscription services**: In the realm of subscription services, employing a keyspace trigger can automatically identify users whose subscriptions have been renewed, seamlessly changing their status to active. Further operations can be performed on these users, such as adding them to a queue for the delivery of notifications or executing additional actions.
 
-These examples highlight the practical application of triggers and functions in different industries, showcasing their value in streamlining processes and delivering efficient solutions. 
+These examples highlight the practical application of triggers and functions in different industries, showcasing their value in streamlining processes and delivering efficient solutions.
 
 Using keyspace and Stream triggers to capture events and execute the desired JavaScript functions requires few lines of code to enrich applications with new behaviors. The following examples show how typical problems are solved with JavaScript.
 
@@ -37,14 +37,14 @@ function alertUserChanged(client, data) {
     client.call('hset', data.key, 'last', curr_time);
 }
 
-redis.registerKeySpaceTrigger('alert_user_changed', 'user:', 
+redis.registerKeySpaceTrigger('alert_user_changed', 'user:',
     alertUserChanged, {description: 'Report user data change.'});
 ```
 
 
 ## Enrich and transform data
 
-Data can be extracted, enriched or transformed, and loaded again. As an example, upon insertion of a document in a Hash data structure, a Trigger can launch the execution of a Function that computes the number of words in the text (in the example, a simple tokenization is presented but the logic can be as complex as required). The counter is finally stored in the same Hash together with the original document. 
+Data can be extracted, enriched or transformed, and loaded again. As an example, upon insertion of a document in a Hash data structure, a Trigger can launch the execution of a Function that computes the number of words in the text (in the example, a simple tokenization is presented but the logic can be as complex as required). The counter is finally stored in the same Hash together with the original document.
 
 ```javascript
 function wordsCounter(client, data){
@@ -54,14 +54,14 @@ function wordsCounter(client, data){
     redis.log('Number of words: ' + words.toString()); //This log is for demo purposes, be aware of spamming the log file in production
 }
 
-redis.registerKeySpaceTrigger('words_counter', 'doc:', 
+redis.registerKeySpaceTrigger('words_counter', 'doc:',
     wordsCounter, {description: 'Count words in a document.'});
 ```
 
 
 ## Batch operations
 
-JavaScript functions can be executed when required, for example as part of scheduled or periodic maintenance routines. An example could be deleting data identified by the desired pattern. 
+JavaScript functions can be executed when required, for example as part of scheduled or periodic maintenance routines. An example could be deleting data identified by the desired pattern.
 
 
 ```javascript
@@ -102,6 +102,23 @@ function automaticSessionExpiry(client, data){
     redis.log('Session ' + data.key + ' has been automatically expired'); //This log is for demo purposes, be aware of spamming the log file in production
 }
 
-redis.registerKeySpaceTrigger('automaticSessionExpiry', 'session:', 
+redis.registerKeySpaceTrigger('automaticSessionExpiry', 'session:',
     automaticSessionExpiry, {description: 'Set the session TTL to one hour.'});
 ```
+
+## Custom key-space notification flags
+
+Since the JS API version 1.2, the `redis.registerKeySpaceTrigger` function accepts an additional `eventNotificationFlags` argument which allows to specify a set of flags which represent what kind of notification the key space trigger is for. These flags are represented as an array of strings which use the suffix of the redis notification enum.
+
+
+```javascript
+var new_flags_since_start = []
+
+function listenOnlyToNewKeys(client, data) {
+    new_flags_since_start.push(data.key);
+}
+
+redis.registerKeySpaceTrigger('listenOnlyToNewKeys', '',
+    session:, {description: 'Catch all new keys.', eventNotificationFlags: [EventNotificationFlags.NEW] });
+```
+
