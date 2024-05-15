@@ -16,7 +16,7 @@ use std::sync::{Arc, Weak};
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::RefCellWrapper;
+use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
 
 pub type RecordAcknowledgeCallback = dyn Fn(&Context, &[u8], u64, u64);
 pub type StreamReaderCallback<T> = dyn Fn(&Context, &[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>

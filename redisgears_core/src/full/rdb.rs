@@ -4,52 +4,17 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::{
+use super::{
     function_load_command::{function_load_internal, CompilationArguments},
-    get_globals, get_globals_mut, get_libraries,
+    get_globals, get_globals_mut, get_libraries, REDIS_GEARS_VERSION,
 };
 
 use mr::libmr::{calc_slot, is_my_slot};
-use redis_module::{
-    error::Error, native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB, Context,
-    RedisModuleTypeMethods,
-};
+use redis_module::{error::Error, raw, Context};
 
 use std::os::raw::c_int;
 
-pub(crate) static REDIS_GEARS_VERSION: i32 = 1;
-pub(crate) static REDIS_GEARS_TYPE: RedisType = RedisType::new(
-    "GearsType",
-    REDIS_GEARS_VERSION,
-    RedisModuleTypeMethods {
-        version: redis_module::TYPE_METHOD_VERSION,
-
-        rdb_load: None,
-        rdb_save: None,
-        aof_rewrite: None, // TODO add support
-        free: None,
-        mem_usage: None,
-        digest: None,
-
-        // Auxiliary data (v2)
-        aux_load: Some(aux_load),
-        aux_save: None,
-        aux_save2: Some(aux_save),
-        aux_save_triggers: REDISMODULE_AUX_BEFORE_RDB as i32,
-
-        free_effort: None,
-        unlink: None,
-        copy: None,
-        defrag: None,
-
-        free_effort2: None,
-        unlink2: None,
-        copy2: None,
-        mem_usage2: None,
-    },
-);
-
-extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
+pub(crate) extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
     let libraries = get_libraries();
     if libraries.is_empty() {
         // no libraries to save, we will save nothing to the RDB so it will be
@@ -212,7 +177,11 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
     Ok(())
 }
 
-unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when: c_int) -> c_int {
+pub(crate) unsafe extern "C" fn aux_load(
+    rdb: *mut raw::RedisModuleIO,
+    encver: c_int,
+    _when: c_int,
+) -> c_int {
     if encver > REDIS_GEARS_VERSION {
         log::info!(
             "Can not load RedisGears data type version '{}', max supported version '{}'",

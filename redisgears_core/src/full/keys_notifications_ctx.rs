@@ -12,9 +12,9 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
 };
 
-use crate::background_run_ctx::BackgroundRunCtx;
-use crate::run_ctx::{RedisClient, RedisClientCallOptions};
-use crate::{get_notification_blocker, GearsLibraryMetaData};
+use super::background_run_ctx::BackgroundRunCtx;
+use super::run_ctx::{RedisClient, RedisClientCallOptions};
+use super::{get_notification_blocker, GearsLibraryMetaData};
 
 use std::sync::Arc;
 

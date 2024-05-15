@@ -20,12 +20,12 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     GearsApiError,
 };
 
-use crate::{
+use super::{
     call_redis_command, call_redis_command_async, get_globals, get_msg_verbose,
     GearsLibraryMetaData,
 };
 
-use crate::background_run_ctx::BackgroundRunCtx;
+use super::background_run_ctx::BackgroundRunCtx;
 
 use std::sync::Arc;
 

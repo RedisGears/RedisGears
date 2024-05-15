@@ -16,15 +16,13 @@ use redis_module::{
     ThreadSafeContext,
 };
 
-use crate::{
-    background_run_ctx::BackgroundRunCtx,
-    run_ctx::{RedisClient, RedisClientCallOptions},
-    GearsLibraryMetaData,
-};
+use super::background_run_ctx::BackgroundRunCtx;
+use super::run_ctx::{RedisClient, RedisClientCallOptions};
+use super::GearsLibraryMetaData;
 
-use crate::stream_reader::{StreamConsumer, StreamReaderAck};
+use super::stream_reader::{StreamConsumer, StreamReaderAck};
 
-use crate::get_notification_blocker;
+use super::get_notification_blocker;
 
 use std::sync::Arc;
 
@@ -77,7 +75,7 @@ pub(crate) struct GearsStreamRecord {
 unsafe impl Sync for GearsStreamRecord {}
 unsafe impl Send for GearsStreamRecord {}
 
-impl crate::stream_reader::StreamReaderRecord for GearsStreamRecord {
+impl super::stream_reader::StreamReaderRecord for GearsStreamRecord {
     fn get_id(&self) -> RedisModuleStreamID {
         self.record.id
     }

@@ -12,13 +12,14 @@ use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::DebuggerBackend;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::LibraryCtxInterface;
 use redisgears_plugin_api::redisgears_plugin_api::{GearsApiError, GearsApiResult};
 
-use crate::compiled_library_api::{CompiledLibraryAPI, CompiledLibraryInternals};
+use super::compiled_library_api::{CompiledLibraryAPI, CompiledLibraryInternals};
+use super::get_globals;
+use super::verify_name;
+use super::GILBackendStorage;
 use crate::config::V8_DEBUG_SERVER_ADDRESS;
-use crate::get_globals;
-use crate::GILBackendStorage;
-use crate::{verify_name, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
-use crate::{get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData};
+use super::{get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData};
 
 use mr::libmr::{
     record::Record as LibMRRecord, remote_task::run_on_all_shards, remote_task::RemoteTask,
@@ -31,7 +32,7 @@ use std::vec::IntoIter;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::get_msg_verbose;
+use super::get_msg_verbose;
 
 use mr_derive::BaseObject;
 
@@ -449,7 +450,7 @@ fn function_load_with_args_with_debugger(
         ));
     }
 
-    if crate::get_globals_mut().debugger_server.is_some() {
+    if super::get_globals_mut().debugger_server.is_some() {
         return Err(RedisError::Str(
             "Only one debugging session can be established at a time.",
         ));
@@ -478,9 +479,9 @@ fn function_load_with_args_with_debugger(
 
     context.reply(Ok(connection_hints_message));
 
-    let _ = crate::get_globals_mut()
+    let _ = super::get_globals_mut()
         .debugger_server
-        .insert(crate::debugging::Server::prepare(
+        .insert(super::debugging::Server::prepare(
             compilation_arguments,
             debugger_backend,
         ));

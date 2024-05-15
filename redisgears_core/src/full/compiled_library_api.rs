@@ -4,7 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::execute_on_pool;
+use super::execute_on_pool;
 use redisai_rs::redisai::redisai_tensor::RedisAITensor;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryInterface;
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;

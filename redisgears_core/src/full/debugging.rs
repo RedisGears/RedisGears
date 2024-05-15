@@ -5,7 +5,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::DebuggerBackend, GearsApiError, GearsApiResult,
 };
 
-use crate::{
+use super::{
     function_load_command::{function_compile, function_evaluate_and_store, CompilationArguments},
     GearsLibrary,
 };

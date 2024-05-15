@@ -15,9 +15,9 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     GearsApiError,
 };
 
-use crate::call_redis_command_async;
-use crate::run_ctx::RedisClientCallOptions;
-use crate::{
+use super::call_redis_command_async;
+use super::run_ctx::RedisClientCallOptions;
+use super::{
     background_run_ctx::BackgroundRunCtx, call_redis_command, get_notification_blocker,
     GearsLibraryMetaData, NotificationBlocker,
 };

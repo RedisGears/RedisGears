@@ -12,7 +12,7 @@ use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{
 };
 use std::sync::Arc;
 
-use crate::{get_globals, get_libraries, get_msg_verbose, GearsLibrary};
+use super::{get_globals, get_libraries, get_msg_verbose, GearsLibrary};
 
 /// Contains information about a single stream that tracked
 /// by a stream trigger.

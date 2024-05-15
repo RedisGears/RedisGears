@@ -14,9 +14,6 @@ lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "mas
 linkme = "0.3"
 redisai_rs = { path = "../redisai_rs" }
 libloading = "0.7"
-redisgears_plugin_api = { path="../redisgears_plugin_api/" }
-threadpool = "1"
-reqwest = { version = "0.11", features = ["json", "blocking"] }
 sha256 = "1"
 lazy_static = "1"
 log = "0.4"
@@ -24,6 +21,19 @@ byte-unit = "4"
 serde_json = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
+
+[dependencies.redisgears_plugin_api]
+optional = true
+path = "../redisgears_plugin_api"
+
+[dependencies.reqwest]
+optional = true
+version = "0.11"
+features = ["json", "blocking"]
+
+[dependencies.threadpool]
+optional = true
+version = "1"
 
 [build-dependencies]
 regex = "1"
@@ -37,3 +47,9 @@ name = "redisgears"
 [[bin]]
 name = "packer"
 path = "src/packer.rs"
+
+[features]
+default = ["noop"]
+# default = ["full"]
+noop = []
+full = ["redisgears_plugin_api", "reqwest", "threadpool"]

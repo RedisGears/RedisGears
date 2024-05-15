@@ -10,11 +10,10 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::RemoteFunctionData, GearsApiError,
 };
 
-use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
-use crate::run_ctx::RedisClientCallOptions;
-use crate::{
-    get_libraries, verify_ok_on_replica, verify_oom, Deserialize, GearsLibraryMetaData, Serialize,
-};
+use super::background_run_scope_guard::BackgroundRunScopeGuardCtx;
+use super::run_ctx::RedisClientCallOptions;
+use super::{get_libraries, verify_ok_on_replica, verify_oom, GearsLibraryMetaData};
+use serde::{Deserialize, Serialize};
 
 use redis_module::{RedisString, RedisValue};
 
