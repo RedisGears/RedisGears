@@ -8,8 +8,8 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 
 [dependencies]
 redis-module = { workspace = true }
-v8_rs = { git = "https://github.com/RedisGears/v8-rs", tag="v0.2.10" }
-v8_rs_derive = { git = "https://github.com/RedisGears/v8-rs", tag="v0.2.10" }
+v8_rs = { git = "https://github.com/RedisGears/v8-rs", tag="v0.2.12" }
+v8_rs_derive = { git = "https://github.com/RedisGears/v8-rs", tag="v0.2.12" }
 redisgears_plugin_api = { path = "../redisgears_plugin_api/" }
 redisgears-macros-internals = { path = "../redisgears_macros_internals/" }
 serde_json = "1"
