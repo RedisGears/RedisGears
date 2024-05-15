@@ -50,6 +50,5 @@ path = "src/packer.rs"
 
 [features]
 default = ["noop"]
-# default = ["full"]
 noop = []
 full = ["redisgears_plugin_api", "reqwest", "threadpool"]
