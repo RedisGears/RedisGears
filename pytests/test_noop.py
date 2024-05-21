@@ -33,12 +33,12 @@ def testReadsRdbButLoadsNothing(env):
     os.symlink(filePath, rdbFilePath)
     env.start()
 
-    env.expect('TFUNCTION', 'LIST', 'vv').equal(None)
+    env.expect('TFUNCTION', 'LIST', 'vv').equal('Unrecognized command.')
 
     # Functions
-    env.expectTfcall('gears_example', 'foo').equal(None)
+    env.expectTfcall('gears_example', 'foo').equal('Unrecognized command.')
     env.assertEqual(env.cmd('get', 'triggers_counter'), None)
-    env.assertEqual(env.tfcallAsync('gears_example', 'asyncfoo'), None)
+    env.expectTfcallAsync('gears_example', 'asyncfoo').equal('Unrecognized command.')
     env.assertEqual(env.cmd('get', 'triggers_counter'), None)
 
     # Key triggers
