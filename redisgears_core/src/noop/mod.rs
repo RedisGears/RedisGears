@@ -1,5 +1,7 @@
 //! The NOOP module for RedisGears v2.
 
+const NOOP_MODULE_ERROR: &str = "Unrecognized command.";
+
 pub(crate) static REDIS_GEARS_VERSION: i32 = 1;
 pub(crate) static REDIS_GEARS_TYPE: RedisType = RedisType::new(
     "GearsType",
@@ -168,7 +170,7 @@ mod rdb {
 }
 
 mod commands {
-    use redis_module::{RedisResult, RedisString, RedisValue};
+    use redis_module::{RedisError, RedisResult, RedisString, RedisValue};
     use redis_module_macros::command;
 
     use super::*;
@@ -188,7 +190,7 @@ mod commands {
     }
 )]
     fn function_call(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-        RedisResult::Ok(RedisValue::Null)
+        RedisResult::Err(RedisError::Str(NOOP_MODULE_ERROR))
     }
 
     #[command(
@@ -206,7 +208,7 @@ mod commands {
     }
 )]
     fn function_call_async(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-        RedisResult::Ok(RedisValue::Null)
+        RedisResult::Err(RedisError::Str(NOOP_MODULE_ERROR))
     }
 
     #[command(
@@ -219,7 +221,7 @@ mod commands {
     }
 )]
     fn function_command_on_replica(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-        RedisResult::Ok(RedisValue::Null)
+        Ok(RedisValue::SimpleStringStatic("OK"))
     }
 
     #[command(
@@ -231,7 +233,7 @@ mod commands {
     }
 )]
     fn function_command(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-        RedisResult::Ok(RedisValue::Null)
+        RedisResult::Err(RedisError::Str(NOOP_MODULE_ERROR))
     }
 
     #[command(
@@ -250,7 +252,7 @@ mod commands {
     }
 )]
     fn update_stream_last_read_id(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-        RedisResult::Ok(RedisValue::Null)
+        Ok(RedisValue::SimpleStringStatic("OK"))
     }
 }
 

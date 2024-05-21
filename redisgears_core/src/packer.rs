@@ -31,11 +31,6 @@ fn main() {
     let mut redisgears_so_path = curr_path.clone();
     redisgears_so_path.push(format!("libredisgears.{}", get_dylib_ext()));
 
-    let mut redisgears_v8_plugin_so_path = curr_path.clone();
-    redisgears_v8_plugin_so_path.push(format!("libredisgears_v8_plugin.{}", get_dylib_ext()));
-
-    println!("{:?}", redisgears_v8_plugin_so_path);
-
     let gears_snapeshot_file_name = format!(
         "redisgears.{}-{}-{}.{}.zip",
         BUILD_OS.unwrap(),
@@ -59,15 +54,11 @@ fn main() {
             gears_snapeshot_file_path.to_str().unwrap(),
             redisgears_so_path.to_str().unwrap(),
         ])
-        .env(
-            "REDISGEARS_V8_PLUGIN_PATH",
-            redisgears_v8_plugin_so_path.to_str().unwrap(),
-        )
         .status()
-        .expect("Failed ramp snapeshot")
+        .expect("Failed ramp snapshot")
         .success()
     {
-        println!("Failed ramp snapeshot");
+        println!("Failed ramp snapshot");
         std::process::exit(1);
     }
 }
