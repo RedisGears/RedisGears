@@ -6,7 +6,6 @@ description: Dynamic execution framework for your Redis data
 homepage: 'http://redisgears.io'
 license: Redis Source Available License Agreement
 command_line_args: ""
-run_command_line_args: "v8-plugin-path {os.getenv('REDISGEARS_V8_PLUGIN_PATH')}"
 min_redis_version: "7.1"
 min_redis_pack_version: "7.2"
 config_command: "TCONFIG_SET"
@@ -42,7 +41,3 @@ exclude_commands:
     - tfcallasync
     - TFCALLASYNC
     - _rg_internals.function
-dependencies:
-    gears_v8:
-        local_path: "{os.getenv('REDISGEARS_V8_PLUGIN_PATH')}"
-        url: http://redismodules.s3.amazonaws.com/redisgears/gears_v8.tgz
