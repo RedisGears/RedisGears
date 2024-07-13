@@ -1,12 +1,12 @@
 # Triggers and Functions
 
+Triggers and functions preview is no longer under active development. Triggers and functions feature preview has ended and it will not be promoted to GA.
+
 [![GitHub Builds](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml/badge.svg)](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml)
 [![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
 [![Documentation](https://img.shields.io/badge/documentation-redis)](https://redis.io/docs/interact/programmability/triggers-and-functions/)
 
 A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes. The `JS` code is execute use [V8 `JS` engine](https://v8.dev/).
-
-**Notice, Triggers and Functions is still under active development and not yet GA. The API might (and probably will) change at the final GA version.**
 
 ## Run Using Docker
 
