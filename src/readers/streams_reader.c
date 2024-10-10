@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
+#include <ctype.h>
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 static Gears_list* streamsRegistration = NULL;
@@ -957,6 +958,217 @@ static bool StreamReader_IsStream(RedisModuleKey *kp){
     return RedisModule_KeyType(kp) == REDISMODULE_KEYTYPE_STREAM;
 }
 
+typedef struct ScanCtx {
+    Gears_list *keys;
+    char *pattern;
+} ScanCtx;
+
+static void StreamReader_ScanFreeKey(void* pd){
+    if (!pd) return;
+    RedisModuleString *keyname = pd;
+    RedisModule_FreeString(NULL, keyname);
+}
+
+static int stringmatchlen(const char *pattern, int patternLen,const char *string, int stringLen, int nocase, int *skipLongerMatches, int nesting)
+{
+    /* Protection against abusive patterns. */
+    if (nesting > 1000) return 0;
+
+    while(patternLen && stringLen) {
+        switch(pattern[0]) {
+        case '*':
+            while (patternLen && pattern[1] == '*') {
+                pattern++;
+                patternLen--;
+            }
+            if (patternLen == 1)
+                return 1; /* match */
+            while(stringLen) {
+                if (stringmatchlen(pattern+1, patternLen-1,
+                            string, stringLen, nocase, skipLongerMatches, nesting+1))
+                    return 1; /* match */
+                if (*skipLongerMatches)
+                    return 0; /* no match */
+                string++;
+                stringLen--;
+            }
+            /* There was no match for the rest of the pattern starting
+             * from anywhere in the rest of the string. If there were
+             * any '*' earlier in the pattern, we can terminate the
+             * search early without trying to match them to longer
+             * substrings. This is because a longer match for the
+             * earlier part of the pattern would require the rest of the
+             * pattern to match starting later in the string, and we
+             * have just determined that there is no match for the rest
+             * of the pattern starting from anywhere in the current
+             * string. */
+            *skipLongerMatches = 1;
+            return 0; /* no match */
+            break;
+        case '?':
+            string++;
+            stringLen--;
+            break;
+        case '[':
+        {
+            int not, match;
+
+            pattern++;
+            patternLen--;
+            not = pattern[0] == '^';
+            if (not) {
+                pattern++;
+                patternLen--;
+            }
+            match = 0;
+            while(1) {
+                if (pattern[0] == '\\' && patternLen >= 2) {
+                    pattern++;
+                    patternLen--;
+                    if (pattern[0] == string[0])
+                        match = 1;
+                } else if (pattern[0] == ']') {
+                    break;
+                } else if (patternLen == 0) {
+                    pattern--;
+                    patternLen++;
+                    break;
+                } else if (patternLen >= 3 && pattern[1] == '-') {
+                    int start = pattern[0];
+                    int end = pattern[2];
+                    int c = string[0];
+                    if (start > end) {
+                        int t = start;
+                        start = end;
+                        end = t;
+                    }
+                    if (nocase) {
+                        start = tolower(start);
+                        end = tolower(end);
+                        c = tolower(c);
+                    }
+                    pattern += 2;
+                    patternLen -= 2;
+                    if (c >= start && c <= end)
+                        match = 1;
+                } else {
+                    if (!nocase) {
+                        if (pattern[0] == string[0])
+                            match = 1;
+                    } else {
+                        if (tolower((int)pattern[0]) == tolower((int)string[0]))
+                            match = 1;
+                    }
+                }
+                pattern++;
+                patternLen--;
+            }
+            if (not)
+                match = !match;
+            if (!match)
+                return 0; /* no match */
+            string++;
+            stringLen--;
+            break;
+        }
+        case '\\':
+            if (patternLen >= 2) {
+                pattern++;
+                patternLen--;
+            }
+            /* fall through */
+        default:
+            if (!nocase) {
+                if (pattern[0] != string[0])
+                    return 0; /* no match */
+            } else {
+                if (tolower((int)pattern[0]) != tolower((int)string[0]))
+                    return 0; /* no match */
+            }
+            string++;
+            stringLen--;
+            break;
+        }
+        pattern++;
+        patternLen--;
+        if (stringLen == 0) {
+            while(*pattern == '*') {
+                pattern++;
+                patternLen--;
+            }
+            break;
+        }
+    }
+    if (patternLen == 0 && stringLen == 0)
+        return 1;
+    return 0;
+}
+
+static void StreamReader_ScanCallback(RedisModuleCtx *ctx, RedisModuleString *keyname, RedisModuleKey *key, void *privdata) {
+    ScanCtx *scanCtx = privdata;
+    size_t len;
+    int skipLongerMatches = 0;
+    const char *keyNameBuff = RedisModule_StringPtrLen(keyname, &len);
+    if (!stringmatchlen(scanCtx->pattern, strlen(scanCtx->pattern), keyNameBuff, len, 0, &skipLongerMatches, 0)) {
+        return;
+    }
+    RedisModule_RetainString(ctx, keyname);
+    Gears_listAddNodeHead(scanCtx->keys, keyname);
+}
+
+static int StreamReader_HandleKeys(Gears_list *keys, StreamReaderTriggerCtx* srctx) {
+    Gears_listNode *node = NULL;
+    while (node = Gears_listFirst(keys)) {
+        /* Get ownership of the value */
+        RedisModuleString *key = Gears_listNodeValue(node);
+        Gears_listNodeValue(node) = NULL;
+        /* Must free the node when GIL is held because RedisString are not thread safe. */
+        Gears_listDelNode(keys, node);
+        LockHandler_Acquire(staticCtx);
+        if (srctx->status != StreamRegistrationStatus_OK) {
+            RedisModule_FreeString(staticCtx, key);
+            LockHandler_Release(staticCtx);
+            RedisModule_Log(staticCtx, "warning", "Stream registration was aborted while key space was scanned");
+            return 0;
+        }
+        RedisModuleKey *kp = RedisModule_OpenKey(staticCtx, key, REDISMODULE_READ);
+        if(kp == NULL){
+            LockHandler_Release(staticCtx);
+            continue;
+        }
+
+        // here we need to check, on redis v5 we need to do RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp)
+        // on redis v6 and above we need RedisModule_KeyType(kp) == 7
+        if(StreamReader_IsStream(kp)){
+            // this is a stream, on v5 we do not have the stream type on the h file
+            // so we compare by numbers directly.
+            const char* keyName = RedisModule_StringPtrLen(key, NULL);
+            SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
+            if(!ssrctx){
+                size_t retries = 0;
+                while(!(ssrctx = SingleStreamReaderCtx_Create(staticCtx, keyName, srctx, false))) {
+                    // creating stream reader ctx can failed if cluster is not initialized.
+                    // sleep for 1 second and retry (but not more than 10 retries)
+                    if(++retries > 10) {
+                        RedisModule_Log(staticCtx, "warning", "Failed creating stream reader ctx for key %s, for more than 10 times, abort.", keyName);
+                        break;
+                    }
+                    LockHandler_Release(staticCtx);
+                    RedisModule_Log(staticCtx, "warning", "Failed creating stream reader ctx for key %s, will retry in 5 seconds.", keyName);
+                    sleep(5);
+                    LockHandler_Acquire(staticCtx);
+
+                }
+            }
+        }
+        RedisModule_FreeString(staticCtx, key);
+        RedisModule_CloseKey(kp);
+
+        LockHandler_Release(staticCtx);
+    }
+    return 1;
+}
+
 static void* StreamReader_ScanForStreams(void* pd){
     RedisGears_LockHanlderRegister();
     StreamReaderTriggerCtx* srctx = pd;
@@ -968,88 +1180,31 @@ static void* StreamReader_ScanForStreams(void* pd){
     	 * the stream, for this we also have retry mechanism */
     	sleep(1);
     }
-    long long cursor = 0;
-    do{
-        // we do not use the lockhandler cause this thread is temporary
-        // and we do not want to allocate any unneeded extra data.
-        LockHandler_Acquire(staticCtx);
-        RedisModuleCallReply *reply = RedisModule_Call(staticCtx, "SCAN", "lcccc", cursor, "COUNT", "10000", "MATCH", srctx->args->streamPrefix);
-        LockHandler_Release(staticCtx);
-
-        bool ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed scanning keys on background", "warning");
-        RedisModule_Assert(ret);
-
-        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-
-        RedisModule_Assert(RedisModule_CallReplyLength(reply) == 2);
-
-        RedisModuleCallReply *cursorReply = RedisModule_CallReplyArrayElement(reply, 0);
-
-        RedisModule_Assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
-
-        RedisModuleString *cursorStr = RedisModule_CreateStringFromCallReply(cursorReply);
-        RedisModule_StringToLongLong(cursorStr, &cursor);
-        RedisModule_FreeString(NULL, cursorStr);
-
-        RedisModuleCallReply *keysReply = RedisModule_CallReplyArrayElement(reply, 1);
-        RedisModule_Assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
-        if(RedisModule_CallReplyLength(keysReply) < 1){
-            RedisModule_FreeCallReply(reply);
-            continue;
-        }
-        for(int i = 0 ; i < RedisModule_CallReplyLength(keysReply) ; ++i){
-            RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(keysReply, i);
-            RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
-            RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
-
-            LockHandler_Acquire(staticCtx);
-            if (srctx->status != StreamRegistrationStatus_OK) {
-                cursor = 0; // make sure to break the do {...} while.
-                RedisModule_FreeString(staticCtx, key);
-                LockHandler_Release(staticCtx);
-                RedisModule_Log(staticCtx, "warning", "Stream registration was aborted while key space was scanned");
-                break;
-            }
-            RedisModuleKey *kp = RedisModule_OpenKey(staticCtx, key, REDISMODULE_READ);
-            if(kp == NULL){
-                LockHandler_Release(staticCtx);
-                continue;
-            }
-
-            // here we need to check, on redis v5 we need to do RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp)
-            // on redis v6 and above we need RedisModule_KeyType(kp) == 7
-            if(StreamReader_IsStream(kp)){
-                // this is a stream, on v5 we do not have the stream type on the h file
-                // so we compare by numbers directly.
-                const char* keyName = RedisModule_StringPtrLen(key, NULL);
-                SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
-                if(!ssrctx){
-                	size_t retries = 0;
-                    while(!(ssrctx = SingleStreamReaderCtx_Create(staticCtx, keyName, srctx, false))) {
-                    	// creating stream reader ctx can failed if cluster is not initialized.
-                    	// sleep for 1 second and retry (but not more than 10 retries)
-                    	if(++retries > 10) {
-                    		RedisModule_Log(staticCtx, "warning", "Failed creating stream reader ctx for key %s, for more than 10 times, abort.", keyName);
-                    		break;
-                    	}
-                    	LockHandler_Release(staticCtx);
-                    	RedisModule_Log(staticCtx, "warning", "Failed creating stream reader ctx for key %s, will retry in 5 seconds.", keyName);
-                    	sleep(5);
-                    	LockHandler_Acquire(staticCtx);
-
-                    }
-                }
-            }
-            RedisModule_FreeString(staticCtx, key);
-            RedisModule_CloseKey(kp);
-
-            LockHandler_Release(staticCtx);
-        }
-
-        RedisModule_FreeCallReply(reply);
-    }while(cursor != 0);
-
+    ScanCtx scanCtx = (ScanCtx){
+        .pattern = srctx->args->streamPrefix,
+        .keys = Gears_listCreate(),
+    };
+    Gears_listSetFreeMethod(scanCtx.keys, StreamReader_ScanFreeKey);
     LockHandler_Acquire(staticCtx);
+    RedisModuleScanCursor *cursor = RedisModule_ScanCursorCreate();
+    bool isDone = false;
+    while (!isDone && RedisModule_Scan(staticCtx, cursor, StreamReader_ScanCallback, &scanCtx)) {
+        LockHandler_Release(staticCtx);
+        if (!StreamReader_HandleKeys(scanCtx.keys, srctx)) {
+            isDone = 1;
+            break;
+        }
+        LockHandler_Acquire(staticCtx);
+        /* Must free the list when GIL is held because RedisString are not thread safe. */
+        Gears_listRelease(scanCtx.keys);
+        scanCtx.keys = Gears_listCreate();
+        Gears_listSetFreeMethod(scanCtx.keys, StreamReader_ScanFreeKey);
+    }
+    if (!isDone) {
+        StreamReader_HandleKeys(scanCtx.keys, srctx);
+    }
+    Gears_listRelease(scanCtx.keys);
+    RedisModule_ScanCursorDestroy(cursor);
     StreamReaderTriggerCtx_Free(srctx);
     LockHandler_Release(staticCtx);
 
