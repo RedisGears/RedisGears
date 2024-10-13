@@ -1133,6 +1133,7 @@ static int StreamReader_HandleKeys(Gears_list *keys, StreamReaderTriggerCtx* src
         }
         RedisModuleKey *kp = RedisModule_OpenKey(staticCtx, key, REDISMODULE_READ);
         if(kp == NULL){
+            RedisModule_FreeString(staticCtx, key);
             LockHandler_Release(staticCtx);
             continue;
         }
@@ -1192,6 +1193,7 @@ static void* StreamReader_ScanForStreams(void* pd){
         LockHandler_Release(staticCtx);
         if (!StreamReader_HandleKeys(scanCtx.keys, srctx)) {
             isDone = 1;
+            LockHandler_Acquire(staticCtx);
             break;
         }
         LockHandler_Acquire(staticCtx);
@@ -1201,7 +1203,9 @@ static void* StreamReader_ScanForStreams(void* pd){
         Gears_listSetFreeMethod(scanCtx.keys, StreamReader_ScanFreeKey);
     }
     if (!isDone) {
+        LockHandler_Release(staticCtx);
         StreamReader_HandleKeys(scanCtx.keys, srctx);
+        LockHandler_Acquire(staticCtx);
     }
     Gears_listRelease(scanCtx.keys);
     RedisModule_ScanCursorDestroy(cursor);
