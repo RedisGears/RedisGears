@@ -2843,7 +2843,7 @@ void ExecutionPlan_FreeWorker(WorkerData* wd){
 }
 
 WorkerData* ExecutionPlan_WorkerGetShallowCopy(WorkerData* wd){
-    ++wd->refCount;
+    __atomic_add_fetch(&wd->refCount, 1, __ATOMIC_SEQ_CST);
     return wd;
 }
 
