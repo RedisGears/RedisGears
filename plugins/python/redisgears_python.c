@@ -701,6 +701,16 @@ static void PythonSessionCtx_Del(PythonSessionCtx* session){
 }
 
 static void PythonSessionCtx_Unlink(PythonSessionCtx* session){
+    /* Unlink requirements if we are the only owner */
+    for(size_t i = 0 ; i < array_len(session->requirements) ; ++i){
+        PythonRequirementCtx* req = session->requirements[i];
+        if (req->refCount == 2) {
+            /* We are the only owner together with the requiremnets dictionary */
+            Gears_dictDelete(RequirementsDict, req->installName);
+            req->isInRequirementsDict = false;
+            PythonRequirementCtx_Free(req);
+        }
+    }
     pthread_mutex_lock(&PySessionsLock);
     PythonSessionCtx_Del(session);
     Gears_listAddNodeTail(DeadSessionsList, session);
@@ -7088,6 +7098,7 @@ static int RedisGearsPy_LoadRegistrations(RedisModuleIO *rdb, int encver, int wh
         }
 
         RedisModule_Free(data);
+        PythonRequirementCtx_Free(req);
     }
     return REDISMODULE_OK;
 
