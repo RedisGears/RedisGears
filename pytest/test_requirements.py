@@ -219,6 +219,10 @@ def testDependenciesDropOnUpgrade(env):
         env.assertEqual(reqs[0][3], 'redis==4')
     env.dumpAndReload(restart=True)
     getConnectionByEnv(env)
+    # make sure cluster will not turn to failed state and we will not be 
+    # able to execute commands on shards, on slow envs, run with valgrind,
+    # or mac, it is needed.
+    env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '60000')
     env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'FORCE_REINSTALL_REQUIREMENTS', 'REQUIREMENTS', 'redis==3').equal('OK')
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
