@@ -6874,18 +6874,19 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
         }
 
         DIR* dir = opendir(venvDir);
-        if(!dir){
-            RedisGears_ExecuteCommand(ctx, "notice", "mkdir -p %s", venvDir);
-            setenv("VIRTUALENV_OVERRIDE_APP_DATA", venvDir, 1);
-            int rc = RedisGears_ExecuteCommand(ctx, "notice", "/bin/bash -c \"%s/bin/python3 -m virtualenv %s\"", PYENV_DIR, venvDir);
-            if (rc) {
-                RedisModule_Log(staticCtx, "warning", "Failed to construct virtualenv");
-                RedisGears_ExecuteCommand(ctx, "notice", "rm -rf %s", venvDir);
-                return REDISMODULE_ERR;
-            }
-        }else{
-            RedisModule_Log(staticCtx, "notice", "Found venv installation under: %s", venvDir);
+        if (dir) {
             closedir(dir);
+            RedisModule_Log(staticCtx, "notice", "Found venv installation under: %s", venvDir);
+            RedisModule_Log(staticCtx, "notice", "Deleting old venv directory: %s", venvDir);
+            RedisGears_ExecuteCommand(ctx, "notice", "rm -rf %s", venvDir);
+        }
+        RedisGears_ExecuteCommand(ctx, "notice", "mkdir -p %s", venvDir);
+        setenv("VIRTUALENV_OVERRIDE_APP_DATA", venvDir, 1);
+        int rc = RedisGears_ExecuteCommand(ctx, "notice", "/bin/bash -c \"%s/bin/python3 -m virtualenv %s\"", PYENV_DIR, venvDir);
+        if (rc) {
+            RedisModule_Log(staticCtx, "warning", "Failed to construct virtualenv");
+            RedisGears_ExecuteCommand(ctx, "notice", "rm -rf %s", venvDir);
+            return REDISMODULE_ERR;
         }
     }else{
         // we are not operating inside virtual env
