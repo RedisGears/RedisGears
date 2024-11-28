@@ -995,6 +995,10 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
         ++crtCtx->numAborted;
     } else {
         ++crtCtx->numSuccess;
+        if(crtCtx->lastError){
+            RG_FREE(crtCtx->lastError);
+            crtCtx->lastError = NULL;
+        }
     }
 
     CommandReaderTriggerCtx_Free(crtCtx);

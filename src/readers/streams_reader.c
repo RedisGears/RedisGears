@@ -724,6 +724,10 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     } else {
         ackAndTrim = true;
         ++srctx->numSuccess;
+        if(srctx->lastError){
+            RG_FREE(srctx->lastError);
+            srctx->lastError = NULL;
+        }
     }
 
     if(ackAndTrim && ssrctx->createdEpoc == srctx->epoc){
