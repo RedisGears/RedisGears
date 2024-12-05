@@ -836,6 +836,10 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         ++rData->numAborted;
     } else {
         ++rData->numSuccess;
+        if(rData->lastError){
+            RG_FREE(rData->lastError);
+            rData->lastError = NULL;
+        }
     }
 
     KeysReaderRegisterData_Free(rData);
