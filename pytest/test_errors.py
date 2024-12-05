@@ -384,8 +384,8 @@ def testCommandReaderOverrideExecRaiseError(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="exec")').error().contains('Can not override a command which are not allowed inside a script')
 
 @gearsTest()
-def testCommandReaderOverrideBlpopRaiseError(env):
-    env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="blpop")').error().contains('Can not override a command which are not allowed inside a script')
+def testCommandReaderOverrideEvalRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="eval")').error().contains('Can not override a command which are not allowed inside a script')
 
 @gearsTest()
 def testKeysReaderWithUnexistingCommandRaiseError(env):
@@ -404,8 +404,8 @@ def testKeysReaderOverrideExecRaiseError(env):
     env.expect('rg.pyexecute', 'GB().register(commands=["exec"])').error().contains('Can not hook a command which are not allowed inside a script')
 
 @gearsTest()
-def testKeysReaderOverrideBlpopRaiseError(env):
-    env.expect('rg.pyexecute', 'GB().register(commands=["blpop"])').error().contains('Can not hook a command which are not allowed inside a script')
+def testKeysReaderOverrideEvalRaiseError(env):
+    env.expect('rg.pyexecute', 'GB().register(commands=["eval"])').error().contains('Can not hook a command which are not allowed inside a script')
 
 @gearsTest()
 def testCallNextOnMapWrongScopes(env):
