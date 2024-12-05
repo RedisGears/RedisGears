@@ -816,7 +816,7 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
         if(err){
             RG_FREE(err);
         }
-    } else if (EPIsFlagOff(ep, EFDone)) {
+    } else if (srtctx->mode == ExecutionModeAsyncLocal) {
         RedisModule_Assert(!ssrctx->currentRunningExecution);
         ssrctx->currentRunningExecution = RG_STRDUP(RedisGears_GetId(ep));
     }
