@@ -153,7 +153,7 @@ struct Gears_thpool_* Gears_thpool_init(int num_threads) {
 
   /* Wait for threads to initialize */
   while (thpool_p->num_threads_alive != num_threads) {
-    sleep(1);
+    usleep(1);
   }
 
   return thpool_p;
