@@ -89,6 +89,7 @@ typedef struct SingleStreamReaderCtx{
     bool isRunning;
     bool isFreeWhenDone;
     size_t createdEpoc;
+    char *currentRunningExecution;
 }SingleStreamReaderCtx;
 
 static void* StreamReader_ScanForStreams(void* pd);
@@ -183,6 +184,7 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
     ssrctx->isFreeWhenDone = false;
     ssrctx->nextBatch = 0;
     ssrctx->batchStartTime = Gears_listCreate();
+    ssrctx->currentRunningExecution = NULL;
     ssrctx->createdEpoc = srtctx->epoc;
     if (!StreamReader_ReadStreamLen(ctx, ssrctx)) {
         RG_FREE(ssrctx->keyName);
@@ -213,6 +215,17 @@ static void StreamReaderTriggerCtx_CleanSingleStreamsData(StreamReaderTriggerCtx
     Gears_dictEntry* entry = NULL;
     while((entry = Gears_dictNext(iter))){
         SingleStreamReaderCtx* ssrctx = Gears_dictGetVal(entry);
+        if (ssrctx->currentRunningExecution) {
+            ExecutionPlan* ep = RedisGears_GetExecution(ssrctx->currentRunningExecution);
+            if(ep && EPIsFlagOff(ep, EFStarted) && EPIsFlagOn(ep, EFIsLocal)){
+                /* If the execution is local and was not yet started lets drop it. */
+                RedisGears_DropExecution(ep);
+                RG_FREE(ssrctx->currentRunningExecution);
+                ssrctx->currentRunningExecution = NULL;
+                ssrctx->srtctx->numAborted++;
+                ssrctx->isRunning = false;
+            }
+        }
         if(ssrctx->timerIsSet){
             ssrctx->freeOnNextTimeEvent = true;
         } else if (ssrctx->isRunning){
@@ -654,6 +667,9 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
 
     int flags = RedisModule_GetContextFlags(staticCtx);
 
+    RG_FREE(ssrctx->currentRunningExecution);
+    ssrctx->currentRunningExecution = NULL;
+
     // Add the execution id to the localDoneExecutions list
     char *currentRunningExecution = RG_STRDUP(RedisGears_GetId(ctx));
     if (currentRunningExecution) {
@@ -798,7 +814,8 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
         if(err){
             RG_FREE(err);
         }
-        return;
+    } else {
+        ssrctx->currentRunningExecution = RG_STRDUP(RedisGears_GetId(ep));
     }
 }
 
