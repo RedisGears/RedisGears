@@ -667,8 +667,10 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
 
     int flags = RedisModule_GetContextFlags(staticCtx);
 
-    RG_FREE(ssrctx->currentRunningExecution);
-    ssrctx->currentRunningExecution = NULL;
+    if (ssrctx->currentRunningExecution) {
+        RG_FREE(ssrctx->currentRunningExecution);
+        ssrctx->currentRunningExecution = NULL;
+    }
 
     // Add the execution id to the localDoneExecutions list
     char *currentRunningExecution = RG_STRDUP(RedisGears_GetId(ctx));
@@ -814,7 +816,8 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
         if(err){
             RG_FREE(err);
         }
-    } else {
+    } else if (srtctx->mode == ExecutionModeAsyncLocal) {
+        RedisModule_Assert(!ssrctx->currentRunningExecution);
         ssrctx->currentRunningExecution = RG_STRDUP(RedisGears_GetId(ep));
     }
 }
