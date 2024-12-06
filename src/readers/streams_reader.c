@@ -210,6 +210,13 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
     return ssrctx;
 }
 
+typedef struct StreamReaderExecutionCtx {
+    StreamReaderTriggerCtx* srctx;
+    SingleStreamReaderCtx* ssrctx;
+} StreamReaderExecutionCtx;
+
+static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx);
+
 static void StreamReaderTriggerCtx_CleanSingleStreamsData(StreamReaderTriggerCtx* srtctx){
     Gears_dictIterator *iter = Gears_dictGetIterator(srtctx->singleStreamData);
     Gears_dictEntry* entry = NULL;
@@ -219,6 +226,9 @@ static void StreamReaderTriggerCtx_CleanSingleStreamsData(StreamReaderTriggerCtx
             ExecutionPlan* ep = RedisGears_GetExecution(ssrctx->currentRunningExecution);
             if(ep && EPIsFlagOff(ep, EFStarted) && EPIsFlagOn(ep, EFIsLocal)){
                 /* If the execution is local and was not yet started lets drop it. */
+                StreamReaderExecutionCtx *pd = ep->onDoneData->pd;
+                StreamReaderTriggerCtx_Free(pd->srctx);
+                RG_FREE(pd);
                 RedisGears_DropExecution(ep);
                 RG_FREE(ssrctx->currentRunningExecution);
                 ssrctx->currentRunningExecution = NULL;
@@ -653,11 +663,6 @@ static void StreamReader_StartScanThread(RedisModuleCtx *ctx, void *data){
     pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, srctx);
     pthread_detach(srctx->scanThread);
 }
-
-typedef struct StreamReaderExecutionCtx {
-    StreamReaderTriggerCtx* srctx;
-    SingleStreamReaderCtx* ssrctx;
-} StreamReaderExecutionCtx;
 
 static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     StreamReaderExecutionCtx *pd = privateData;
