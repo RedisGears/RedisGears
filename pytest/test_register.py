@@ -2109,3 +2109,139 @@ GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(batch=2, onF
         if 'timeout' not in str(e):
             sys.stderr.write('%s\n' % str(e))
         env.assertContains('timeout', str(e))
+
+@gearsTest(skipOnCluster=True)
+def testStreamErrorAbortNotYetStartedExections(env):
+    script = '''
+import time
+failed = True
+def failedOnce(r):
+    global failed
+    if failed:
+        time.sleep(5)
+        failed = False
+        raise Exception('error')
+GB('StreamReader').foreach(failedOnce).register(batch=1, duration=100, onFailedPolicy='retry', onFailedRetryInterval=5, mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test').ok()
+    verifyRegistrationIntegrity(env)
+
+    for i in range(100):
+        env.cmd('xadd', 's%d' % i, '*', 'foo', 'bar')
+    
+    # wait till we see the error
+    with TimeLimit(10, env, 'Failed waiting see error'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            if registrations[0][7][21] is not None:
+                env.assertContains('Exception: error', registrations[0][7][21])
+                break
+            time.sleep(0.1)
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    num_trigger = registrations[0][7][3]
+    num_aborted = registrations[0][7][9]
+    numSuccess = registrations[0][7][5]
+    numFailed = registrations[0][7][7]
+    # verify we have aborted executions
+    env.assertGreater(num_aborted, 0)
+    # verify that numAborted + numSuccess + numFailures  == numTriggered
+    env.assertEqual(num_aborted + numSuccess + numFailed, num_trigger)
+
+    # verify that we see a retry and the error goes away
+    with TimeLimit(30, env, 'Failed waiting for retry to start'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            if registrations[0][7][21] is None:
+                break
+            time.sleep(0.1)
+
+@gearsTest(skipOnCluster=True)
+def testStreamPauseAbortNotYetStartedExections(env):
+    script = '''
+import time
+failed = True
+def failedOnce(r):
+    time.sleep(1)
+GB('StreamReader').foreach(failedOnce).register(batch=1, duration=100, onFailedPolicy='retry', onFailedRetryInterval=5, mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test').ok()
+    verifyRegistrationIntegrity(env)
+
+    execution_id = env.cmd('RG.DUMPREGISTRATIONS')[0][1]
+
+    for i in range(100):
+        env.cmd('xadd', 's%d' % i, '*', 'foo', 'bar')
+    
+    # wait to see success
+    with TimeLimit(10, env, 'Failed waiting see success'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            if registrations[0][7][5] > 0:
+                break
+            time.sleep(0.1)
+
+    env.cmd('RG.PAUSEREGISTRATIONS', execution_id)
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    num_trigger_after_pause = registrations[0][7][3]
+    num_aborted = registrations[0][7][9]
+    # verify we have aborted executions
+    env.assertGreater(num_aborted, 0)
+
+    with TimeLimit(10, env, 'Failed waiting to see that all execution finished'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            num_trigger = registrations[0][7][3]
+            num_aborted = registrations[0][7][9]
+            numSuccess = registrations[0][7][5]
+            numFailed = registrations[0][7][7]
+            if num_aborted + numSuccess + numFailed == num_trigger:
+                break
+            time.sleep(0.1)
+
+    env.cmd('RG.UNPAUSEREGISTRATIONS', execution_id)
+
+    with TimeLimit(10, env, 'Failed waiting for more exections to be triggered'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            num_trigger = registrations[0][7][3]
+            if num_trigger > num_trigger_after_pause:
+                break
+            time.sleep(0.1)
+
+    # pause again so we will not need to wait for all the executions to finish
+    env.cmd('RG.PAUSEREGISTRATIONS', execution_id)
+
+@gearsTest(skipOnCluster=True)
+def testStreamUnregisterAbortNotYetStartedExections(env):
+    script = '''
+import time
+failed = True
+def failedOnce(r):
+    time.sleep(1)
+GB('StreamReader').foreach(failedOnce).register(batch=1, duration=100, onFailedPolicy='retry', onFailedRetryInterval=5, mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test').ok()
+    verifyRegistrationIntegrity(env)
+
+    execution_id = env.cmd('RG.DUMPREGISTRATIONS')[0][1]
+
+    for i in range(100):
+        env.cmd('xadd', 's%d' % i, '*', 'foo', 'bar')
+    
+    # wait to see success
+    with TimeLimit(10, env, 'Failed waiting see success'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            if registrations[0][7][5] > 0:
+                break
+            time.sleep(0.1)
+
+    env.cmd('RG.UNREGISTER', execution_id)
+
+    with TimeLimit(10, env, 'Failed waiting for all the executions to finish'):
+        while True:
+            if env.cmd('RG.DUMPEXECUTIONS') == []:
+                break
+            time.sleep(0.1)

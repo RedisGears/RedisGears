@@ -1981,6 +1981,25 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
 }
 
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
+    FlatExecutionPlan* old_fep = Gears_dictFetchValue(epData.registeredFepDict, fep->id);
+    if (old_fep) {
+        RedisModule_Log(staticCtx, "warning", "FATAL a regitration with the same ID was added to the registration dictionary");
+        RedisModule_Log(staticCtx, "warning", "old_registration_id: %s", old_fep->idStr);
+        if (old_fep->PD) {
+            ArgType* type = FepPrivateDatasMgmt_GetArgType(old_fep->PDType);
+            char* str = type->tostring(old_fep, old_fep->PD);
+            RedisModule_Log(staticCtx, "warning", "old_registration_pd: %s", str);
+            RG_FREE(str);
+        }
+        RedisModule_Log(staticCtx, "warning", "new_registration_id: %s", fep->idStr);
+        if (fep->PD) {
+            ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+            char* str = type->tostring(fep, fep->PD);
+            RedisModule_Log(staticCtx, "warning", "new_registration_pd: %s", str);
+            RG_FREE(str);
+        }
+        RedisModule_Assert(false);
+    }
     Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
     // call the on registered callback if set
     if(fep->onRegisteredStep.stepName){
