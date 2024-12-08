@@ -2245,3 +2245,23 @@ GB('StreamReader').foreach(failedOnce).register(batch=1, duration=100, onFailedP
             if env.cmd('RG.DUMPEXECUTIONS') == []:
                 break
             time.sleep(0.1)
+
+@gearsTest(skipOnCluster=True)
+def testMoreThen128GeneratedIDs(env):
+    script = '''
+GB('StreamReader').register(batch=1, duration=100, onFailedPolicy='retry', onFailedRetryInterval=5, mode='async_local')
+    '''
+    for i in range(200):
+        env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'UPGRADE').ok()
+
+    id1 = int(env.cmd('RG.DUMPREGISTRATIONS')[0][1].split('-')[1])
+
+    env.dumpAndReload(restart=True)
+
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'UPGRADE').ok()
+
+    id2 = int(env.cmd('RG.DUMPREGISTRATIONS')[0][1].split('-')[1])
+
+    env.assertGreater(id2, id1)
+
+
