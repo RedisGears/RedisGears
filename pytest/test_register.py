@@ -2256,6 +2256,7 @@ GB('StreamReader').register(batch=1, duration=100, onFailedPolicy='retry', onFai
 
     id1 = int(env.cmd('RG.DUMPREGISTRATIONS')[0][1].split('-')[1])
 
+    env.cmd('save')
     env.dumpAndReload(restart=True)
 
     env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'UPGRADE').ok()
