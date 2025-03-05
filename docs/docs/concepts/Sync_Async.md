@@ -211,7 +211,7 @@ The following function will continue popping elements from the requested list up
 
 RedisGears also provided `client.callAsyncRaw` API, which is the same as `client.callAsync` but will not decode the replies as utf8.
 
-**Notice**: There is no guarantee when the promise returned from `client.callAsyn` will be resolved. So the **function writer should not make any assumption about atomicity guarantees.**
+**Notice**: There is no guarantee when the promise returned from `client.callAsync` will be resolved. So the **function writer should not make any assumption about atomicity guarantees.**
 
 # Block Redis failure
 
