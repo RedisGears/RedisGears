@@ -61,7 +61,7 @@ redis.registerKeySpaceTrigger(
   'keys:*', //key prefix
   function(client, data) {}, //callback
   {
-    description: 'description'
+    description: 'description',
     onTriggerFired: function(client, data){}
   } //optional arguments
 )
