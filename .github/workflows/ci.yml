@@ -30,7 +30,7 @@ jobs:
             pre_req_install_cmd: dnf install -y git
           - osnick: ubuntu20.04
             container: ubuntu:focal
-            pre_req_install_cmd: apt-get install -y -qq git ca-certificates curl make tar gzip
+            pre_req_install_cmd: apt-get update && apt-get install -y software-properties-common && add-apt-repository ppa:git-core/ppa && apt-get update && apt-get install -y git
           - osnick: ubuntu22.04
             container: ubuntu:jammy
             pre_req_install_cmd: apt-get update && apt-get install -y software-properties-common && add-apt-repository ppa:git-core/ppa && apt-get update && apt-get install -y git
@@ -43,7 +43,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
 
       - name: Ensure base tools
         shell: bash
