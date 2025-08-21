@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '**'
+  pull_request:
+
+jobs:
+  build-with-redis:
+    name: ${{ matrix.osnick }}, redis ${{ matrix.redis_version }}
+    if: ${{ !endsWith(github.ref_name, 'docs') && !endsWith(github.ref_name, 'noci') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ${{ matrix.container }}
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix:
+        osnick: ['rocky8', 'rocky9', 'ubuntu20.04', 'ubuntu22.04']
+        include:
+          - osnick: rocky8
+            container: redisfab/rmbuilder:6.2.7-x64-rockylinux8
+          - osnick: rocky9
+            container: redisfab/rmbuilder:6.2.7-x64-rockylinux9
+          - osnick: ubuntu20.04
+            container: redisfab/rmbuilder:6.2.7-x64-focal
+          - osnick: ubuntu22.04
+            container: redisfab/rmbuilder:6.2.7-x64-jammy
+        redis_version: ['6.4', '7.2', '7.4']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Ensure base tools
+        shell: bash
+        run: |
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update -qq
+            apt-get install -y -qq git ca-certificates curl make tar gzip
+          elif command -v dnf >/dev/null 2>&1; then
+            dnf -y install git ca-certificates curl make tar gzip
+          elif command -v yum >/dev/null 2>&1; then
+            yum -y install git ca-certificates curl make tar gzip
+          fi
+
+      - name: Setup automation
+        shell: bash
+        run: |
+          git submodule update --init deps/readies
+          ./deps/readies/bin/getpy3
+
+      - name: System setup
+        shell: bash
+        run: |
+          ./system-setup.py
+          ./plugins/jvmplugin/system-setup.py
+          echo "python3: $(command -v python3)"
+          python3 --version
+          python3 -m pip list
+
+      - name: Install Redis ${{ matrix.redis_version }}
+        shell: bash
+        run: |
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          ./deps/readies/bin/getredis -v ${{ matrix.redis_version }} --force
+          redis-server --version
+
+      - name: Build
+        shell: bash
+        run: make all SHOW=1
+
+      - name: Gears Tests
+        shell: bash
+        run: make test
+
+      - name: Upload pytest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-logs-${{ matrix.redis_version }}
+          path: pytest/logs
+
+
