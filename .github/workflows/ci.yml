@@ -24,16 +24,16 @@ jobs:
         include:
           - osnick: rocky8
             container: rockylinux:8
-            pre_req_install_cmd: dnf install -y git
+            pre_req_install_cmd: dnf install -y git curl ca-certificates make tar gzip
           - osnick: rocky9
             container: rockylinux:9
-            pre_req_install_cmd: dnf install -y git
+            pre_req_install_cmd: dnf install -y git curl ca-certificates make tar gzip
           - osnick: ubuntu20.04
             container: ubuntu:focal
-            pre_req_install_cmd: apt-get update && apt-get install -y software-properties-common && add-apt-repository ppa:git-core/ppa && apt-get update && apt-get install -y git
+            pre_req_install_cmd: apt-get update && apt-get install -y software-properties-common && add-apt-repository ppa:git-core/ppa && apt-get update && apt-get install -y git curl ca-certificates make tar gzip
           - osnick: ubuntu22.04
             container: ubuntu:jammy
-            pre_req_install_cmd: apt-get update && apt-get install -y software-properties-common && add-apt-repository ppa:git-core/ppa && apt-get update && apt-get install -y git
+            pre_req_install_cmd: apt-get update && apt-get install -y software-properties-common && add-apt-repository ppa:git-core/ppa && apt-get update && apt-get install -y git curl ca-certificates make tar gzip
         redis_version: ['6.4', '7.2', '7.4']
     steps:
       - name: Install pre-requisites
