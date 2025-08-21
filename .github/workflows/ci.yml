@@ -45,18 +45,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Ensure base tools
-        shell: bash
-        run: |
-          if command -v apt-get >/dev/null 2>&1; then
-            apt-get update -qq
-            apt-get install -y -qq git ca-certificates curl make tar gzip
-          elif command -v dnf >/dev/null 2>&1; then
-            dnf -y install git ca-certificates curl make tar gzip
-          elif command -v yum >/dev/null 2>&1; then
-            yum -y install git ca-certificates curl make tar gzip
-          fi
-
       - name: Setup automation
         shell: bash
         run: |
