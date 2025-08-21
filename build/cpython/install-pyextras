@@ -5,3 +5,4 @@ $PYTHON -m pip install --upgrade pip
 $PYTHON -m pip install gearsclient==1.1.0
 $PYTHON -m pip install virtualenv
 $PYTHON -m pip install wheel
+$PYTHON -m pip install redis==3.5.3
