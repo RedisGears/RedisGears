@@ -23,13 +23,13 @@ jobs:
         osnick: ['rocky8', 'rocky9', 'ubuntu20.04', 'ubuntu22.04']
         include:
           - osnick: rocky8
-            container: redisfab/rmbuilder:6.2.7-x64-rockylinux8
+            container: rockylinux:8
           - osnick: rocky9
-            container: redisfab/rmbuilder:6.2.7-x64-rockylinux9
+            container: rockylinux:9
           - osnick: ubuntu20.04
-            container: redisfab/rmbuilder:6.2.7-x64-focal
+            container: ubuntu:focal
           - osnick: ubuntu22.04
-            container: redisfab/rmbuilder:6.2.7-x64-jammy
+            container: ubuntu:jammy
         redis_version: ['6.4', '7.2', '7.4']
     steps:
       - name: Checkout
