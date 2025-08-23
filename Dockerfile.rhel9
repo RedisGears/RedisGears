@@ -1,0 +1,22 @@
+FROM quay.io/centos/centos:stream9
+
+WORKDIR /work
+
+# Install  minimal dependencies (vim-common is needed for `xxd`, maven is needed for the jvm builds)
+RUN dnf install -y wget vim-common maven
+
+# Install dev tools
+RUN dnf groupinstall -y "Development Tools"
+RUN dnf install -y openssl openssl-devel libuuid-devel
+
+# Redis 6.2.x needed for the tests
+RUN dnf  install "redis >= 6.2.*" -y
+
+RUN git config --global --add safe.directory /work
+
+# Install and use uv to create a minimal python virtual environment for build/test/pack/upload
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+RUN uv venv --python 3.10 /opt/.venv
+ENV PATH="/opt/.venv/bin:$PATH"
+RUN uv pip install pip setuptools jinja2 ramp-packer~=2.5.2
+
