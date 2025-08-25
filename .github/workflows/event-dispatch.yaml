@@ -9,8 +9,9 @@ on:
         type: choice
         default: focal
         options:
-          - rhel8
-          - rhel9
+          - "rhel8"
+          - "rhel9"
+          - ""
 
       publish_snapshot:
         description: "Copy snapshot artifacts to S3"
