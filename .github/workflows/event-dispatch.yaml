@@ -1,0 +1,41 @@
+name: Gears Manual Run
+
+on:
+  workflow_dispatch:
+    inputs:
+
+      os:
+        description: "Which os to run on. Leave empty to run on all"
+        type: choice
+        default: focal
+        options:
+          - rhel8
+          - rhel9
+
+      publish_snapshot:
+        description: "Copy snapshot artifacts to S3"
+        type: boolean
+        required: false
+        default: false
+
+      publish_release:
+        description: "Copy release artifacts to S3"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
+jobs:
+  manual-run:
+    uses: ./.github/workflows/flow-gears.yaml
+
+    with:
+      os: ${{ inputs.os }}
+      publish_snapshot: ${{ inputs.publish_snapshot }}
+      publish_release: ${{ inputs.publish_release }}
+    secrets: inherit
+
