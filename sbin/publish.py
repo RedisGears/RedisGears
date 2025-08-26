@@ -42,7 +42,7 @@ def main():
 
 
 if __name__ == "__main__":
-    assert os.getenv("AWS_REGION")
+    assert os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
     assert os.getenv("AWS_ACCESS_KEY_ID")
     assert os.getenv("AWS_SECRET_ACCESS_KEY")
     main()
