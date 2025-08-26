@@ -18,5 +18,5 @@ RUN git config --global --add safe.directory /work
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
 RUN uv venv --python 3.10 /opt/.venv
 ENV PATH="/opt/.venv/bin:$PATH"
-RUN uv pip install pip setuptools jinja2 ramp-packer~=2.5.2
+RUN uv pip install pip setuptools jinja2 ramp-packer~=2.5.2 boto3
 
