@@ -9,6 +9,8 @@ on:
         type: choice
         default: ""
         options:
+          - "focal"
+          - "jammy"
           - "rhel8"
           - "rhel9"
           - ""

@@ -26,6 +26,12 @@ jobs:
       fail-fast: false
       matrix:
         platform:
+          - os: focal
+            arch: x86
+            runner: ubuntu-latest
+          - os: jammy
+            arch: x86
+            runner: ubuntu-latest
           - os: rhel8
             arch: x86
             runner: ubuntu-latest
