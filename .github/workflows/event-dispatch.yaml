@@ -7,7 +7,7 @@ on:
       os:
         description: "Which os to run on. Leave empty to run on all"
         type: choice
-        default: focal
+        default: rhel9
         options:
           - rhel8
           - rhel9
