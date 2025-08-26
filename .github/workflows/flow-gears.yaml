@@ -65,11 +65,11 @@ jobs:
           if: ${{ env.should_skip == 'false' && inputs.publish_snapshot }}
           shell: bash
           run: |
-            docker run --rm -v $(pwd):/work $(docker build -q -f Dockerfile.${{ matrix.platform.os }} .) python3 ./sbin/publish.py --snapshot
+            docker run --rm -v $(pwd):/work -e AWS_DEFAULT_REGION -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN $(docker build -q -f Dockerfile.${{ matrix.platform.os }} .) python3 ./sbin/publish.py --snapshot
 
         - name: Publish release artifacts to S3
           if: ${{ env.should_skip == 'false' && inputs.publish_release }}
           shell: bash
           run: |
-            docker run --rm -v $(pwd):/work $(docker build -q -f Dockerfile.${{ matrix.platform.os }} .) python3 ./sbin/publish.py --release
+            docker run --rm -v $(pwd):/work -e AWS_DEFAULT_REGION -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN $(docker build -q -f Dockerfile.${{ matrix.platform.os }} .) python3 ./sbin/publish.py --release
 
