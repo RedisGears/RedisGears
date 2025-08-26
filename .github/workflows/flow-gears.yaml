@@ -51,7 +51,7 @@ jobs:
           if: ${{ env.should_skip == 'false' }}
           shell: bash
           run: |
-            docker run -it --rm -v $(pwd):/work $(docker build -f Dockerfile.${{ inputs.os }} .) bash -c "make all"
+            docker run --rm -v $(pwd):/work $(docker build -f Dockerfile.${{ inputs.os }} .) bash -c "make all"
 
         - name: Configure AWS credentials for uploading artifacts
           if: ${{ env.should_skip == 'false' && (inputs.publish_snapshot || inputs.publish_release) }}
@@ -65,11 +65,11 @@ jobs:
           if: ${{ env.should_skip == 'false' && inputs.publish_snapshot }}
           shell: bash
           run: |
-            docker run -it --rm -v $(pwd):/work $(docker build -f Dockerfile.${{ inputs.os }} .) bash -c "python3 ./sbin/publish.py --snapshot"
+            docker run --rm -v $(pwd):/work $(docker build -f Dockerfile.${{ inputs.os }} .) bash -c "python3 ./sbin/publish.py --snapshot"
 
         - name: Publish release artifacts to S3
           if: ${{ env.should_skip == 'false' && inputs.publish_release }}
           shell: bash
           run: |
-            docker run -it --rm -v $(pwd):/work $(docker build -f Dockerfile.${{ inputs.os }} .) bash -c "python3 ./sbin/publish.py --release"
+            docker run --rm -v $(pwd):/work $(docker build -f Dockerfile.${{ inputs.os }} .) bash -c "python3 ./sbin/publish.py --release"
 

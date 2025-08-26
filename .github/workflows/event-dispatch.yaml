@@ -7,10 +7,10 @@ on:
       os:
         description: "Which os to run on. Leave empty to run on all"
         type: choice
-        default: rhel9
+        default: ""
         options:
-          - rhel8
-          - rhel9
+          - "rhel8"
+          - "rhel9"
 
       publish_snapshot:
         description: "Copy snapshot artifacts to S3"
