@@ -1,6 +1,11 @@
-FROM registry.access.redhat.com/ubi8
+FROM quay.io/centos/centos:stream8
 
 WORKDIR /work
+
+# Fix the mirror list URLs to their new vault URLs (since centos 8 reached its EOL)
+RUN cd /etc/yum.repos.d && \
+    sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* && \
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
 
 # Install  minimal dependencies (vim-common is needed for `xxd`, maven is needed for the jvm builds)
 RUN dnf install -y wget vim-common maven
@@ -10,7 +15,12 @@ RUN dnf install -y gcc gcc-c++ make cmake autoconf automake libtool pkgconfig gi
 RUN dnf install -y openssl openssl-devel libuuid-devel
 
 # Redis 6.2.x needed for the tests
-RUN cd /tmp && wget http://download.redis.io/releases/redis-6.2.19.tar.gz && tar xzf redis-6.2.19.tar.gz && cd redis-6.2.19 && make install && cd /work
+RUN cd /tmp && \
+    wget http://download.redis.io/releases/redis-6.2.19.tar.gz && \
+    tar xzf redis-6.2.19.tar.gz && \
+    cd redis-6.2.19 && \
+    make install && \
+    cd /work
 
 RUN git config --global --add safe.directory /work
 
