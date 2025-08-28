@@ -1,0 +1,29 @@
+FROM ubuntu:22.04
+
+WORKDIR /work
+
+RUN apt update -y
+
+# Install  minimal dependencies (vim-common is needed for `xxd`, maven is needed for the jvm builds)
+RUN apt install -y wget vim-common maven
+
+# Install dev tools
+RUN apt install -y gcc make cmake autoconf automake libtool git
+RUN apt install -y libssl-dev uuid-dev zlib1g-dev
+
+# Redis 6.2.x needed for the tests
+RUN cd /tmp && \
+    wget http://download.redis.io/releases/redis-6.2.19.tar.gz && \
+    tar xzf redis-6.2.19.tar.gz && \
+    cd redis-6.2.19 && \
+    make install && \
+    cd /work
+
+RUN git config --global --add safe.directory /work
+
+# Install and use uv to create a minimal python virtual environment for build/test/pack/upload
+RUN wget -qO- https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+ENV PATH="/opt/.venv/bin:$PATH"
+RUN uv venv --python 3.10 /opt/.venv
+RUN uv pip install pip setuptools jinja2 ramp-packer~=2.5.2 boto3
+

@@ -1,0 +1,81 @@
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: false
+        type: string
+        default: ''
+
+      publish_snapshot:
+        required: false
+        type: boolean
+        default: false
+
+      publish_release:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  flow:
+    permissions:
+      id-token: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - os: focal
+            arch: x86
+            runner: ubuntu-latest
+          - os: jammy
+            arch: x86
+            runner: ubuntu-latest
+          - os: rhel8
+            arch: x86
+            runner: ubuntu-latest
+          - os: rhel9
+            arch: x86
+            runner: ubuntu-latest
+
+    name: ${{ matrix.platform.os }}-${{ matrix.platform.arch }}
+
+    runs-on: ${{ matrix.platform.runner }}
+
+    env:
+      should_skip: ${{ (inputs.os != '' && inputs.os != matrix.platform.os) || (inputs.arch != '' && inputs.arch != matrix.platform.arch) }}
+
+    steps:
+        - name: Checkout code
+          if: ${{ env.should_skip == 'false' }}
+          uses: actions/checkout@v4
+          with:
+            submodules: 'true'
+
+        - name: Build, test and pack
+          if: ${{ env.should_skip == 'false' }}
+          shell: bash
+          run: |
+            docker run --rm -v $(pwd):/work $(docker build -q -f Dockerfile.${{ matrix.platform.os }} .) make all
+
+        - name: Configure AWS credentials for uploading artifacts
+          if: ${{ env.should_skip == 'false' && (inputs.publish_snapshot || inputs.publish_release) }}
+          uses: aws-actions/configure-aws-credentials@v4
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ secrets.APT_S3_REGION }}
+
+        - name: Publish snapshot artifacts to S3
+          if: ${{ env.should_skip == 'false' && inputs.publish_snapshot }}
+          shell: bash
+          run: |
+            docker run --rm -v $(pwd):/work -e AWS_DEFAULT_REGION -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN $(docker build -q -f Dockerfile.${{ matrix.platform.os }} .) python3 ./sbin/publish.py --snapshot
+
+        - name: Publish release artifacts to S3
+          if: ${{ env.should_skip == 'false' && inputs.publish_release }}
+          shell: bash
+          run: |
+            docker run --rm -v $(pwd):/work -e AWS_DEFAULT_REGION -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN $(docker build -q -f Dockerfile.${{ matrix.platform.os }} .) python3 ./sbin/publish.py --release
+
