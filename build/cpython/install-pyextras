@@ -6,3 +6,5 @@ $PYTHON -m pip install gearsclient==1.1.0
 $PYTHON -m pip install virtualenv
 $PYTHON -m pip install wheel
 $PYTHON -m pip install redis==5.0.8
+# Apparently redis-py 5.0.8 requires async_timeout in python 3.7 as well (the requirements in the package's METADATA miss it)
+$PYTHON -m pip install async_timeout==4.0.3
