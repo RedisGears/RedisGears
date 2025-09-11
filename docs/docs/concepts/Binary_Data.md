@@ -51,7 +51,7 @@ redis.registerFunction("my_get",
         return c.callRaw("get", key);
     },
     {
-        flags: [redis.functionFalgs.RAW_ARGUMENTS]
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
     }
 );
 ```

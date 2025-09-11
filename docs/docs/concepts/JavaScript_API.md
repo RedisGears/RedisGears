@@ -61,7 +61,7 @@ redis.registerKeySpaceTrigger(
   'keys:*', //key prefix
   function(client, data) {}, //callback
   {
-    description: 'description'
+    description: 'description',
     onTriggerFired: function(client, data){}
   } //optional arguments
 )
@@ -119,7 +119,7 @@ Client object that is used to perform operations on Redis.
 
 * Since version: 2.0.0
 
-Run a command on Redis. The command is executed on the current Redis instrance.
+Run a command on Redis. The command is executed on the current Redis instance.
 
 ```JavaScript
 client.call(
@@ -132,7 +132,7 @@ client.call(
 
 * Since version: 2.0.0
 
-Run a command on Redis but does not perform UTF8 decoding on the result. The command is executed on the current Redis instrance.
+Run a command on Redis but does not perform UTF8 decoding on the result. The command is executed on the current Redis instance.
 
 ```JavaScript
 client.callRaw(
@@ -159,7 +159,7 @@ client.callAsync(
 
 * Since version: 2.0.0
 
-Call a command on Redis. Allow Redis to block the execution if needed (like `blpop` command) and return the result asynchronously. Returns a promise object that will be resolved when the command invocation finished. The command is executed on the current Redis instrance.
+Call a command on Redis. Allow Redis to block the execution if needed (like `blpop` command) and return the result asynchronously. Returns a promise object that will be resolved when the command invocation finished. The command is executed on the current Redis instance.
 
 ```JavaScript
 client.callRaw(
@@ -183,7 +183,7 @@ client.isBlockAllowed(); // True / False
 
 * Since version: 2.0.0
 
-Execute the given function asynchroniusly. Return a promise that will be fulfilled when the promise will be resolved/rejected.
+Execute the given function asynchronously. Return a promise that will be fulfilled when the promise will be resolved/rejected.
 
 
 ```JavaScript
@@ -235,7 +235,7 @@ async_client.runOnKey(
 
 Runs a remote function on all the shards. Returns a promise which will be fulfilled when the invocation finishes on all the shards.
  
-The result is array of 2 elements, the first is another array of all the results. The second is an array of all the errors happened durring the invocation. Notice that the remote function must return a json serializable result so we can serialize the result back to the original shard.
+The result is array of 2 elements, the first is another array of all the results. The second is an array of all the errors happened during the invocation. Notice that the remote function must return a json serializable result so we can serialize the result back to the original shard.
 
 Notice that remote function can only perform read operations, not writes are allowed.
 
