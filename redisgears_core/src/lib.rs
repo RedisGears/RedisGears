@@ -484,6 +484,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         key: RegisteredKeys,
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
         description: Option<String>,
+        event_notification_flags: Option<redis_module::NotifyEvent>,
     ) -> Result<(), GearsApiError> {
         verify_name(name).map_err(|e| {
             GearsApiError::new(format!("Unallowed key space trigger name '{name}', {e}."))
@@ -557,11 +558,13 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                     k,
                     fire_event_callback,
                     description,
+                    event_notification_flags,
                 ),
                 RegisteredKeys::Prefix(p) => globals.notifications_ctx.add_consumer_on_prefix(
                     p,
                     fire_event_callback,
                     description,
+                    event_notification_flags,
                 ),
             }
         };
@@ -1529,7 +1532,12 @@ fn generic_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, ke
     }
 }
 
-fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+fn key_space_notification(
+    ctx: &Context,
+    event_notification_type: NotifyEvent,
+    event: &str,
+    key: &[u8],
+) {
     if !is_master(ctx) {
         // do not fire notifications on slave
         return;
@@ -1540,7 +1548,9 @@ fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, 
         return;
     }
 
-    globals.notifications_ctx.on_key_touched(ctx, event, key)
+    globals
+        .notifications_ctx
+        .on_key_touched(ctx, event_notification_type, event, key)
 }
 
 fn scan_key_space_for_streams(ctx: &Context) {
@@ -1904,15 +1914,15 @@ mod gears_module {
         event_handlers: [
             [@STREAM: on_stream_touched],
             [@GENERIC: generic_notification],
-            [@ALL @MISSED: key_space_notification],
+            [@ALL @NEW @MISSED: key_space_notification],
         ]
         configurations:[
             i64: [
-                ["error-verbosity", &*ERROR_VERBOSITY ,1, 1, 2, ConfigurationFlags::DEFAULT, None],
-                ["execution-threads", &*EXECUTION_THREADS ,1, 1, 32, ConfigurationFlags::IMMUTABLE, None],
-                ["remote-task-default-timeout", &*REMOTE_TASK_DEFAULT_TIMEOUT , 500, 1, i64::MAX, ConfigurationFlags::DEFAULT, None],
-                ["lock-redis-timeout", &*LOCK_REDIS_TIMEOUT , 500, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
-                ["db-loading-lock-redis-timeout", &*DB_LOADING_LOCK_REDIS_TIMEOUT , 30000, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
+                ["error-verbosity", &*ERROR_VERBOSITY, 1, 1, 2, ConfigurationFlags::DEFAULT, None],
+                ["execution-threads", &*EXECUTION_THREADS, 1, 1, 32, ConfigurationFlags::IMMUTABLE, None],
+                ["remote-task-default-timeout", &*REMOTE_TASK_DEFAULT_TIMEOUT, 500, 1, i64::MAX, ConfigurationFlags::DEFAULT, None],
+                ["lock-redis-timeout", &*LOCK_REDIS_TIMEOUT, 500, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
+                ["db-loading-lock-redis-timeout", &*DB_LOADING_LOCK_REDIS_TIMEOUT, 30000, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
 
                 [
                     "v8-maxmemory",

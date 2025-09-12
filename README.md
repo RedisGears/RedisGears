@@ -48,6 +48,9 @@ See the [build](docs/build_instructions.md) page for more information.
 
 ## Getting started
 
+### Current JavaScript API version
+The current available JavaScript api version is: [`1.2`](./js_api/gears-api.d.ts).
+
 ### Run JS code
 The API exposed by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) work. Let's write a simple `hello world` function that returns the string `hello world`:
 ```js

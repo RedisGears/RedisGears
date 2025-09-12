@@ -1,6 +1,7 @@
 from common import gearsTest
 from common import toDictionary
 from common import runUntil
+from common import Env
 from redis import Redis
 import time
 
@@ -1121,3 +1122,16 @@ redis.registerFunction("start", function(client, key, val){
     runUntil(env, 'OK', lambda: env.tfcall('lib', 'continue'))
     env.expectTfcall('lib', 'continue').equal('OK')
     future.equal('OK')
+
+# Only starting 1.1 we can invoke `redis.apiVersion()`.
+# However, this test is introduced in 1.2 and so the most compatible
+# version with `1.1` should be greater than or equal to `1.2`.
+@gearsTest()
+def testGetApiVersion(env: Env):
+    """#!js api_version=1.1 name=foo
+redis.registerFunction("test", function(){
+    return redis.apiVersion()
+})
+    """
+    res = float(env.expectTfcall('foo', 'test').res)
+    env.assertGreaterEqual(res, 1.2)
