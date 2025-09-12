@@ -108,7 +108,7 @@ And now we can invoke `my_ping` using [`TFCALL`](docs/commands/tfcall.md) :
 
 ### What's next?
 
-* [Quick Start](docs/docs/Quick_Start.md)
+* [Quick Start](docs/docs/Quick_Start_CLI.md)
 * [Official documentation](https://redis.io/docs/interact/programmability/triggers-and-functions/)
 * [Commands](https://redis.io/commands)
 * [Configuration](docs/docs/Configuration.md)
