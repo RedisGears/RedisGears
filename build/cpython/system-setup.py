@@ -21,7 +21,7 @@ class Python3Setup(paella.Setup):
             self.install_downloaders()
 
         self.pip_install("wheel")
-        self.pip_install("setuptools --upgrade")
+        self.pip_install("'setuptools<81' --upgrade")
 
         self.install("git openssl")
 
