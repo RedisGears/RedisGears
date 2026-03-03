@@ -23,7 +23,7 @@ class RedisGearsSetup(paella.Setup):
             self.install("wget")
 
         self.pip_install("wheel")
-        self.pip_install("setuptools --upgrade")
+        self.pip_install("'setuptools<81' --upgrade")
 
         self.install("git openssl")
 
