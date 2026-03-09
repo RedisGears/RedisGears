@@ -18,6 +18,8 @@
 #include <marshal.h>
 #include <assert.h>
 #include <dirent.h>
+#include <sys/file.h>
+#include <errno.h>
 
 #include <pthread.h>
 
@@ -6873,21 +6875,93 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
             RedisGears_ASprintf(&venvDir, "%s/.venv-%s", pythonConfig.pythonInstallationDir, shardUid);
         }
 
+        /*
+         * Acquire an exclusive lock on the venv directory to prevent concurrent
+         * processes from racing on venv creation/deletion. This addresses a race
+         * where node_wd spawns a second Redis process (because the PID file
+         * doesn't exist yet during module init) and both try to set up the venv
+         * simultaneously, corrupting it. (RED-171086)
+         */
+        char* lockFilePath = NULL;
+        RedisGears_ASprintf(&lockFilePath, "%s.lock", venvDir);
+        int lockFd = open(lockFilePath, O_CREAT | O_RDWR, 0644);
+        if (lockFd < 0) {
+            RedisModule_Log(staticCtx, "warning", "Failed to open venv lock file %s: %s", lockFilePath, strerror(errno));
+            RG_FREE(lockFilePath);
+            return REDISMODULE_ERR;
+        }
+        if (flock(lockFd, LOCK_EX) != 0) {
+            RedisModule_Log(staticCtx, "warning", "Failed to acquire venv lock: %s", strerror(errno));
+            close(lockFd);
+            RG_FREE(lockFilePath);
+            return REDISMODULE_ERR;
+        }
+
+        /*
+         * Check if the existing venv was already built for the current module
+         * version. If so, skip the expensive recreation (~10-16s blocking the
+         * main thread). This drastically reduces the startup blocking window
+         * and eliminates the race condition on non-upgrade restarts.
+         */
+        bool needsRecreation = true;
+        char* versionFilePath = NULL;
+        RedisGears_ASprintf(&versionFilePath, "%s/.gears_version", venvDir);
         DIR* dir = opendir(venvDir);
         if (dir) {
             closedir(dir);
-            RedisModule_Log(staticCtx, "notice", "Found venv installation under: %s", venvDir);
-            RedisModule_Log(staticCtx, "notice", "Deleting old venv directory: %s", venvDir);
-            RedisGears_ExecuteCommand(ctx, "notice", "rm -rf %s", venvDir);
+            FILE* vf = fopen(versionFilePath, "r");
+            if (vf) {
+                char storedVersion[64] = {0};
+                if (fgets(storedVersion, sizeof(storedVersion), vf)) {
+                    size_t len = strlen(storedVersion);
+                    if (len > 0 && storedVersion[len - 1] == '\n') {
+                        storedVersion[len - 1] = '\0';
+                    }
+                    if (strcmp(storedVersion, RedisGears_GetVersionStr()) == 0) {
+                        RedisModule_Log(staticCtx, "notice",
+                            "Existing venv at %s matches current version %s, skipping recreation",
+                            venvDir, RedisGears_GetVersionStr());
+                        needsRecreation = false;
+                    } else {
+                        RedisModule_Log(staticCtx, "notice",
+                            "Venv version mismatch (stored=%s, current=%s), recreating",
+                            storedVersion, RedisGears_GetVersionStr());
+                    }
+                }
+                fclose(vf);
+            } else {
+                RedisModule_Log(staticCtx, "notice",
+                    "No version marker in existing venv at %s, recreating", venvDir);
+            }
         }
-        RedisGears_ExecuteCommand(ctx, "notice", "mkdir -p %s", venvDir);
-        setenv("VIRTUALENV_OVERRIDE_APP_DATA", venvDir, 1);
-        int rc = RedisGears_ExecuteCommand(ctx, "notice", "/bin/bash -c \"%s/bin/python3 -m virtualenv %s\"", PYENV_DIR, venvDir);
-        if (rc) {
-            RedisModule_Log(staticCtx, "warning", "Failed to construct virtualenv");
+
+        if (needsRecreation) {
+            RedisModule_Log(staticCtx, "notice", "Creating venv at: %s", venvDir);
             RedisGears_ExecuteCommand(ctx, "notice", "rm -rf %s", venvDir);
-            return REDISMODULE_ERR;
+            RedisGears_ExecuteCommand(ctx, "notice", "mkdir -p %s", venvDir);
+            setenv("VIRTUALENV_OVERRIDE_APP_DATA", venvDir, 1);
+            int rc = RedisGears_ExecuteCommand(ctx, "notice",
+                "/bin/bash -c \"%s/bin/python3 -m virtualenv %s\"", PYENV_DIR, venvDir);
+            if (rc) {
+                RedisModule_Log(staticCtx, "warning", "Failed to construct virtualenv");
+                RedisGears_ExecuteCommand(ctx, "notice", "rm -rf %s", venvDir);
+                flock(lockFd, LOCK_UN);
+                close(lockFd);
+                RG_FREE(lockFilePath);
+                RG_FREE(versionFilePath);
+                return REDISMODULE_ERR;
+            }
+            FILE* vf = fopen(versionFilePath, "w");
+            if (vf) {
+                fprintf(vf, "%s\n", RedisGears_GetVersionStr());
+                fclose(vf);
+            }
         }
+
+        flock(lockFd, LOCK_UN);
+        close(lockFd);
+        RG_FREE(lockFilePath);
+        RG_FREE(versionFilePath);
     }else{
         // we are not operating inside virtual env
         venvDir = RG_STRDUP(PYENV_DIR);
