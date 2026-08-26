@@ -10,7 +10,7 @@
 #include <stdbool.h>
 
 #define REDISGEARS_VERSION_MAJOR 8
-#define REDISGEARS_VERSION_MINOR 4
+#define REDISGEARS_VERSION_MINOR 6
 #define REDISGEARS_VERSION_PATCH 0
 
 #define STR1(a) #a
