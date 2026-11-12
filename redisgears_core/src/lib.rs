@@ -1608,7 +1608,7 @@ fn on_loading_event(ctx: &Context, loading_sub_event: LoadingSubevent) {
         }
         LoadingSubevent::Ended | LoadingSubevent::Failed => {
             // re-enable key space notifications
-            ctx.log_notice("Loading finished, re-enable key space notificaitons.");
+            ctx.log_notice("Loading finished, re-enable key space notifications.");
             let globals = get_globals_mut();
             globals.avoid_key_space_notifications = false;
         }
